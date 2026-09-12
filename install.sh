@@ -8,8 +8,9 @@
 #      through pacman. sudo asks for your password once.
 #   2. the hyprcage binary for this machine, from the GitHub release, checksum
 #      verified against the SHA256SUMS published with it, into ~/.local/bin.
-#   3. the Claude Code plugin (this repository is its own marketplace), when
-#      the claude CLI is present; otherwise it prints the two commands.
+#   3. the agents it finds: the Claude Code plugin (this repository is its own
+#      marketplace), and the MCP server plus the skill for Codex, Cursor,
+#      Gemini CLI, Windsurf and OpenCode.
 #   4. hyprcage doctor.
 #
 # Options and environment:
@@ -84,6 +85,7 @@ install_binary() {
   a=$(arch)
   if [ -z "$version" ]; then version=$(latest_version) || true; fi
   [ -n "$version" ] || die "cannot find the latest release of $REPO (offline?); HYPRCAGE_FROM_SOURCE=1 builds it with go"
+  VERSION=$version
   if [ -x "$BIN_DIR/hyprcage" ] && [ "$("$BIN_DIR/hyprcage" version 2>/dev/null)" = "$version" ]; then
     say "hyprcage $version already in $BIN_DIR"; return
   fi
@@ -103,7 +105,103 @@ check_path() {
   warn "$BIN_DIR is not on your PATH; add it to your shell profile and to your graphical session (Hyprland's env), or the plugin will not find hyprcage"
 }
 
-# --- 3. plugin -------------------------------------------------------------------
+# --- 3. agents -------------------------------------------------------------------
+
+# json_set FILE TOPKEY JSON: writes hyprcage's entry under TOPKEY in a JSON
+# config file, creating or preserving the rest of it.
+json_set() {
+  have python3 || { warn "python3 missing: add hyprcage by hand to $1 (see the README)"; return 1; }
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, os, sys
+path, top, entry = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        text = f.read().strip()
+    if text:
+        data = json.loads(text)
+data.setdefault(top, {})["hyprcage"] = entry
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(data, f, indent=2); f.write("\n")
+PY
+}
+
+# json_unset FILE TOPKEY: removes hyprcage's entry, leaving the rest.
+json_unset() {
+  [ -f "$1" ] && have python3 || return 0
+  python3 - "$1" "$2" <<'PY'
+import json, sys
+path, top = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+if isinstance(data.get(top), dict) and data[top].pop("hyprcage", None) is not None:
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2); f.write("\n")
+PY
+}
+
+# install_skill DIR: copies the skill for an agent that has no plugin system.
+install_skill() {
+  local dst=$1/hyprcage src=$SRC_DIR/skills/hyprcage/SKILL.md
+  mkdir -p "$dst"
+  if [ -f "$src" ]; then
+    cp -f "$src" "$dst/SKILL.md"
+  else
+    curl -fsSL -o "$dst/SKILL.md" "https://raw.githubusercontent.com/$REPO/${VERSION:-main}/skills/hyprcage/SKILL.md" || { warn "could not fetch the skill for $dst"; rmdir "$dst" 2>/dev/null; return; }
+  fi
+}
+
+# Each agent gets the MCP server (the absolute path, so PATH does not matter)
+# and, outside Claude Code, a copy of the skill. Claude Code alone gets the
+# session hooks through its plugin; elsewhere screens of a finished session
+# are closed by the safety timer.
+register_agents() {
+  local bin=$BIN_DIR/hyprcage found=0
+  if have claude; then found=1; register_plugin
+  elif [ -d "$HOME/.claude" ]; then found=1; say "Claude Code (no claude CLI in PATH): in a session run  /plugin marketplace add $REPO  then  /plugin install hyprcage@hyprcage"
+  fi
+  if have codex; then
+    found=1
+    if grep -qs '^\[mcp_servers\.hyprcage\]' "$HOME/.codex/config.toml"; then say "codex: already registered"
+    elif codex mcp add hyprcage -- "$bin" mcp >/dev/null 2>&1; then say "codex: MCP server registered"
+    else warn "codex: run  codex mcp add hyprcage -- $bin mcp"; fi
+    install_skill "$HOME/.codex/skills"
+  fi
+  if have gemini; then
+    found=1
+    if gemini mcp list 2>/dev/null | grep -q hyprcage; then say "gemini: already registered"
+    elif gemini mcp add -s user hyprcage "$bin" mcp >/dev/null 2>&1; then say "gemini: MCP server registered"
+    else warn "gemini: run  gemini mcp add -s user hyprcage $bin mcp"; fi
+  fi
+  if [ -d "$HOME/.cursor" ]; then
+    found=1; json_set "$HOME/.cursor/mcp.json" mcpServers "{\"command\":\"$bin\",\"args\":[\"mcp\"]}" && say "cursor: MCP server registered"
+    install_skill "$HOME/.cursor/skills"
+  fi
+  if [ -d "$HOME/.codeium/windsurf" ]; then
+    found=1; json_set "$HOME/.codeium/windsurf/mcp_config.json" mcpServers "{\"command\":\"$bin\",\"args\":[\"mcp\"]}" && say "windsurf: MCP server registered"
+    install_skill "$HOME/.codeium/windsurf/skills"
+  fi
+  if have opencode || [ -d "$HOME/.config/opencode" ]; then
+    found=1; json_set "$HOME/.config/opencode/opencode.json" mcp "{\"type\":\"local\",\"command\":[\"$bin\",\"mcp\"],\"enabled\":true}" && say "opencode: MCP server registered"
+    install_skill "$HOME/.config/opencode/skills"
+  fi
+  [ $found = 1 ] || say "no known agent found; any MCP client can run  $bin mcp  (see the README)"
+}
+
+unregister_agents() {
+  if have claude; then
+    claude plugin uninstall hyprcage >/dev/null 2>&1 || true
+    claude plugin marketplace remove hyprcage >/dev/null 2>&1 || true
+  fi
+  have codex && codex mcp remove hyprcage >/dev/null 2>&1
+  have gemini && gemini mcp remove -s user hyprcage >/dev/null 2>&1
+  json_unset "$HOME/.cursor/mcp.json" mcpServers
+  json_unset "$HOME/.codeium/windsurf/mcp_config.json" mcpServers
+  json_unset "$HOME/.config/opencode/opencode.json" mcp
+  local d; for d in .codex/skills .cursor/skills .codeium/windsurf/skills .config/opencode/skills; do rm -rf "$HOME/$d/hyprcage"; done
+  return 0
+}
 
 register_plugin() {
   if ! have claude; then
@@ -121,11 +219,8 @@ register_plugin() {
 # --- uninstall ---------------------------------------------------------------------
 
 uninstall() {
-  say "removing the plugin, the binary and hyprcage's state (cage and wl-mirror are left)"
-  if have claude; then
-    claude plugin uninstall hyprcage >/dev/null 2>&1 || true
-    claude plugin marketplace remove hyprcage >/dev/null 2>&1 || true
-  fi
+  say "removing hyprcage from the agents, the binary and hyprcage's state (cage and wl-mirror are left)"
+  unregister_agents
   if [ -x "$BIN_DIR/hyprcage" ]; then "$BIN_DIR/hyprcage" gc --all >/dev/null 2>&1 || true; fi
   rm -f "$BIN_DIR/hyprcage"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/hyprcage" "${XDG_CONFIG_HOME:-$HOME/.config}/hyprcage"
@@ -143,7 +238,7 @@ case ${1:-} in
     install_packages
     install_binary
     check_path
-    register_plugin
+    register_agents
     say "checking the installation"
     "$BIN_DIR/hyprcage" doctor || true
     ;;

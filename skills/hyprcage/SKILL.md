@@ -28,7 +28,7 @@ retry. Nothing else to install.
 ## How (MCP tools)
 
 1. `screen_create` → **one screen per application** (cage shows one app at a time), 1280x800 by default. Remember its name.
-2. `app_launch` with the command. Chromium: `chromium --ozone-platform=wayland --user-data-dir=/tmp/hc-profile --no-first-run <url>`.
+2. `app_launch` with the command. Browsers: always a dedicated profile, and `--kiosk` with the URL when the task is a page (the whole screen is the page). Chromium: `chromium --ozone-platform=wayland --user-data-dir=/tmp/hc-profile --no-first-run --kiosk <url>`. Firefox: `mkdir -p /tmp/hc-ff && firefox --no-remote --profile /tmp/hc-ff --kiosk <url>` (the profile directory must exist). Drop `--kiosk` only when you need tabs or the address bar.
 3. `screenshot`, then `click` / `type` / `key` / `scroll` / `drag` with **screen pixel coordinates**. Use `wait` (stability or title) instead of sleeping. Ask for `screenshot_after` only when you need to see the result.
 4. `screen_destroy` **as soon as you are done**, before handing back to the human. If you keep a screen open between steps, say so.
 

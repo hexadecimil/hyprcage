@@ -16,14 +16,30 @@ pgrep -x Hyprland >/dev/null || { HYPR_CONFIG=classic ./hypr-start.sh >/dev/null
 export HYPRLAND_INSTANCE_SIGNATURE=$(ls "$XDG_RUNTIME_DIR/hypr" | head -1)
 sudo pacman -R --noconfirm cage wl-mirror >/dev/null 2>&1; rm -f ~/.local/bin/hyprcage
 command -v cage >/dev/null && fail "precondition: cage still installed"
+# Fake agents: codex and gemini as scripts that log their arguments, config
+# directories for cursor, windsurf and opencode.
+mkdir -p ~/.local/bin ~/.cursor ~/.codeium/windsurf ~/.config/opencode ~/.codex ~/.claude; rm -f ~/fake-agents.log
+printf '#!/bin/sh\necho "codex $*" >> "$HOME/fake-agents.log"\ncase "$*" in "mcp add"*) printf "[mcp_servers.hyprcage]\\n" >> "$HOME/.codex/config.toml";; "mcp remove"*) : > "$HOME/.codex/config.toml";; esac\n' > ~/.local/bin/codex
+printf '#!/bin/sh\necho "gemini $*" >> "$HOME/fake-agents.log"\n' > ~/.local/bin/gemini
+chmod +x ~/.local/bin/codex ~/.local/bin/gemini; : > ~/.codex/config.toml
+echo '{"mcpServers":{"other":{"command":"x"}}}' > ~/.cursor/mcp.json
 
 echo "== install.sh end to end (packages by sudo -n, binary from the release base)"
 bash "$R/install.sh" > ~/install.log 2>&1 && pass "install.sh exits 0" || { fail "install.sh failed"; tail -5 ~/install.log; }
 command -v cage >/dev/null && pass "cage installed" || fail "cage not installed"
 command -v wl-mirror >/dev/null && pass "wl-mirror installed" || fail "wl-mirror not installed"
 [ -x ~/.local/bin/hyprcage ] && pass "binary in ~/.local/bin ($(hyprcage version))" || fail "binary missing"
-grep -q 'plugin marketplace add' ~/install.log && pass "plugin commands printed (no claude CLI here)" || fail "plugin step: $(grep -i plugin ~/install.log | head -2)"
+grep -q 'plugin marketplace add' ~/install.log && pass "Claude Code: plugin commands printed (~/.claude present, no claude CLI)" || fail "plugin step: $(grep -i plugin ~/install.log | head -2)"
 grep -q '^hyprcage  *ok' ~/install.log && pass "doctor ran at the end" || fail "doctor did not run: $(tail -3 ~/install.log)"
+
+echo "== agents registered"
+bin=$HOME/.local/bin/hyprcage
+grep -q "codex mcp add hyprcage -- $bin mcp" ~/fake-agents.log && pass "codex: mcp add called" || fail "codex: $(grep codex ~/fake-agents.log)"
+grep -q "gemini mcp add -s user hyprcage $bin mcp" ~/fake-agents.log && pass "gemini: mcp add called" || fail "gemini: $(grep gemini ~/fake-agents.log)"
+[ "$(jq -r '.mcpServers.hyprcage.command' ~/.cursor/mcp.json)" = "$bin" ] && [ "$(jq -r '.mcpServers.other.command' ~/.cursor/mcp.json)" = x ] && pass "cursor: entry added, others kept" || fail "cursor: $(cat ~/.cursor/mcp.json)"
+[ "$(jq -r '.mcpServers.hyprcage.args[0]' ~/.codeium/windsurf/mcp_config.json)" = mcp ] && pass "windsurf: entry added" || fail "windsurf: $(cat ~/.codeium/windsurf/mcp_config.json 2>&1)"
+[ "$(jq -r '.mcp.hyprcage.type' ~/.config/opencode/opencode.json)" = local ] && [ "$(jq -r '.mcp.hyprcage.command[1]' ~/.config/opencode/opencode.json)" = mcp ] && pass "opencode: entry added" || fail "opencode: $(cat ~/.config/opencode/opencode.json 2>&1)"
+for d in .codex/skills .cursor/skills .codeium/windsurf/skills .config/opencode/skills; do [ -s ~/$d/hyprcage/SKILL.md ] || fail "skill missing in ~/$d"; done; [ -s ~/.codex/skills/hyprcage/SKILL.md ] && pass "skill copied to the agents' skill directories"
 
 echo "== a tampered checksum is refused"
 rm -f ~/.local/bin/hyprcage; rm -rf ~/bad; mkdir -p ~/bad
@@ -51,6 +67,10 @@ hyprcage doctor --json | jq -e '.[]|select(.name=="setup")' >/dev/null && fail "
 echo "== uninstall"
 bash "$R/install.sh" --uninstall >/dev/null 2>&1
 [ ! -e ~/.local/bin/hyprcage ] && [ ! -e ~/.local/state/hyprcage ] && pass "uninstall removed the binary and the state" || fail "uninstall left files"
+grep -q "codex mcp remove hyprcage" ~/fake-agents.log && grep -q "gemini mcp remove -s user hyprcage" ~/fake-agents.log && pass "uninstall: codex and gemini unregistered" || fail "uninstall: $(grep remove ~/fake-agents.log)"
+[ "$(jq -r '.mcpServers.hyprcage // "gone"' ~/.cursor/mcp.json)" = gone ] && [ "$(jq -r '.mcpServers.other.command' ~/.cursor/mcp.json)" = x ] && [ "$(jq -r '.mcp.hyprcage // "gone"' ~/.config/opencode/opencode.json)" = gone ] && pass "uninstall: JSON entries removed, others kept" || fail "uninstall: cursor=$(cat ~/.cursor/mcp.json) opencode=$(cat ~/.config/opencode/opencode.json)"
+[ ! -e ~/.cursor/skills/hyprcage ] && [ ! -e ~/.codex/skills/hyprcage ] && pass "uninstall: skills removed" || fail "uninstall: skills left"
+rm -f ~/.local/bin/codex ~/.local/bin/gemini; rm -rf ~/.cursor ~/.codeium ~/.config/opencode ~/.codex ~/.claude
 command -v cage >/dev/null && pass "uninstall leaves cage, as documented" || fail "uninstall removed cage"
 bash "$R/install.sh" --binary-only >/dev/null 2>&1 || true   # back in place for the other suites
 echo; [ $FAILED = 0 ] && echo "ALL PASS" || echo "SOME FAILURES"; exit $FAILED

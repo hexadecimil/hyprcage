@@ -7,7 +7,9 @@ screenshots or drive an app, it should not do it on your desktop. hyprcage
 gives it a screen of its own: a headless Hyprland output running a nested
 [cage](https://github.com/cage-kiosk/cage) compositor with its own seat. The
 agent's clicks and keystrokes never touch your mouse, keyboard, focus or
-workspaces. You can watch it work on a spare workspace, or not.
+workspaces. You can watch it work on a spare workspace, or not. It works on
+any Hyprland desktop, Omarchy included, with Claude Code, Codex, Cursor,
+Gemini CLI, Windsurf, OpenCode or any other MCP client.
 
 ## Install
 
@@ -27,8 +29,9 @@ asks for it through a password dialog the first time it needs a screen.
 curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/main/install.sh | bash
 ```
 
-Installs cage, the latest release and the plugin. `install.sh --uninstall`
-removes them. To pin everything to one version, script included:
+Installs cage, the latest release, and registers hyprcage with every agent
+it finds on the machine. `install.sh --uninstall` removes all of it. To pin
+everything to one version, script included:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/v0.1.0/install.sh | HYPRCAGE_VERSION=v0.1.0 bash
@@ -41,6 +44,23 @@ git clone https://github.com/hexadecimil/hyprcage && cd hyprcage
 make build && install -Dm755 hyprcage ~/.local/bin/hyprcage
 hyprcage setup && hyprcage doctor
 ```
+
+## Agents
+
+| Agent | Tools | Skill | Screens of a finished session |
+|---|---|---|---|
+| Claude Code | plugin | plugin | closed at once |
+| Codex | `codex mcp add` | `~/.codex/skills` | closed by the safety timer |
+| Cursor | `~/.cursor/mcp.json` | `~/.cursor/skills` | closed by the safety timer |
+| Gemini CLI | `gemini mcp add` | | closed by the safety timer |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/skills` | closed by the safety timer |
+| OpenCode | `~/.config/opencode/opencode.json` | `~/.config/opencode/skills` | closed by the safety timer |
+| Any MCP client | `hyprcage mcp` on stdio | `skills/hyprcage/SKILL.md` | closed by the safety timer |
+
+The installer does the registration for the agents it finds. Only the
+Claude Code plugin carries session hooks, which close an agent's screens the
+moment its session ends. Elsewhere, the safety timer closes them within 15
+minutes.
 
 ## Usage
 
