@@ -30,8 +30,21 @@ curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/main/install.s
 ```
 
 Installs cage, the latest release, and registers hyprcage with every agent
-it finds on the machine. `install.sh --uninstall` removes all of it. To pin
-everything to one version, script included:
+found on the machine. Options come after `bash -s --`:
+
+```
+curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/main/install.sh | bash -s -- --agents codex,cursor
+```
+
+| Option | Effect |
+|---|---|
+| `--agents claude,codex,gemini,cursor,windsurf,opencode` | register only these agents (default: every agent found) |
+| `--agents none` | register no agent |
+| `--uninstall` | remove the binary, the registrations and hyprcage's state |
+| `HYPRCAGE_VERSION=v0.1.0` | install that release instead of the latest |
+| `HYPRCAGE_FROM_SOURCE=1` | build with Go instead of downloading |
+
+To pin the script itself to a version as well, fetch it from the tag:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/v0.1.0/install.sh | HYPRCAGE_VERSION=v0.1.0 bash
