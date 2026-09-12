@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ready</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; }
+  #box { position: absolute; top: 500px; width: 80px; height: 80px; background: #c00; animation: slide 2s linear infinite alternate; }
+  @keyframes slide { from { left: 0; } to { left: 1100px; } }
+  #i { position: absolute; left: 100px; top: 100px; width: 600px; height: 40px; font-size: 24px; }
+  #log { position: absolute; left: 100px; top: 200px; font-size: 20px; }
+</style></head>
+<body>
+<input id="i" autocomplete="off">
+<div id="log"></div>
+<div id="box"></div>
+<script>
+  const i = document.getElementById('i'), log = document.getElementById('log');
+  const set = t => { document.title = t; log.textContent = t; };
+  set('ready');
+  document.body.addEventListener('mousedown', e => set('click ' + e.clientX + ',' + e.clientY + ' b' + e.button + (e.ctrlKey ? ' ctrl' : '')));
+  document.body.addEventListener('dblclick', e => set('dblclick ' + e.clientX + ',' + e.clientY));
+  document.body.addEventListener('wheel', e => set('wheel ' + Math.sign(e.deltaY) + ' at ' + e.clientX + ',' + e.clientY), { passive: true });
+  i.addEventListener('input', () => set('val ' + i.value));
+  document.addEventListener('keydown', e => { if (e.ctrlKey || e.altKey) set('key ' + (e.ctrlKey ? 'ctrl+' : '') + (e.altKey ? 'alt+' : '') + e.key); });
+</script>
+</body></html>

@@ -1,0 +1,105 @@
+package mcpserver
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hexadecimil/hyprcage/internal/config"
+)
+
+func connect(t *testing.T) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	st, ct := mcp.NewInMemoryTransports()
+	srv := newServer(config.Default()).mcpServer()
+	if _, err := srv.Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cs.Close() })
+	return cs
+}
+
+func text(res *mcp.CallToolResult) string {
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
+}
+
+func TestToolsRegistered(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cs := connect(t)
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"screen_create", "screen_destroy", "screen_list", "app_launch", "app_close", "windows",
+		"screenshot", "click", "double_click", "move", "scroll", "drag", "type", "key", "wait", "batch", "setup"}
+	got := map[string]*mcp.Tool{}
+	for _, tl := range res.Tools {
+		got[tl.Name] = tl
+	}
+	for _, name := range want {
+		if got[name] == nil {
+			t.Errorf("tool %s missing", name)
+		}
+	}
+	if len(res.Tools) != len(want) {
+		t.Errorf("%d tools, want %d", len(res.Tools), len(want))
+	}
+	// x and y are required for click, screen is not (cahier F14).
+	schema, _ := got["click"].InputSchema.(map[string]any)
+	req, _ := schema["required"].([]any)
+	var reqs []string
+	for _, r := range req {
+		reqs = append(reqs, r.(string))
+	}
+	joined := strings.Join(reqs, ",")
+	if !strings.Contains(joined, "x") || !strings.Contains(joined, "y") || strings.Contains(joined, "screen") {
+		t.Errorf("click required = %v", reqs)
+	}
+}
+
+func TestScreenListEmpty(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cs := connect(t)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "screen_list", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError || strings.TrimSpace(text(res)) != "[]" {
+		t.Errorf("screen_list: isError=%v text=%q", res.IsError, text(res))
+	}
+}
+
+func TestActionWithoutHyprlandIsToolError(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "")
+	cs := connect(t)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "click", Arguments: map[string]any{"x": 1, "y": 2}})
+	if err != nil {
+		t.Fatalf("protocol error instead of tool error: %v", err)
+	}
+	if !res.IsError || !strings.Contains(text(res), "hyprland_unreachable") {
+		t.Errorf("isError=%v text=%q", res.IsError, text(res))
+	}
+}
+
+func TestInvalidArgumentsAreRejected(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cs := connect(t)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "click", Arguments: map[string]any{"x": 1}})
+	if err == nil && !res.IsError {
+		t.Error("missing y should be rejected")
+	}
+}

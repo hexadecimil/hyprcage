@@ -1,0 +1,11 @@
+{
+  "name": "hyprcage",
+  "owner": { "name": "hexadecimil", "url": "https://github.com/hexadecimil/hyprcage" },
+  "plugins": [
+    {
+      "name": "hyprcage",
+      "source": "./",
+      "description": "A caged desktop for AI agents on Hyprland: screen_create, app_launch, screenshot, click, type, key and screen_destroy on a virtual screen the human never sees moving."
+    }
+  ]
+}

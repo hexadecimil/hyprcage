@@ -1,0 +1,58 @@
+package screen
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// cage's renderer. Its GLES renderer needs a working EGL on the render node;
+// in a VM without 3D acceleration (Hyprland itself on kms_swrast) it never
+// maps a window, while the pixman renderer does. No probe tells the two
+// apart reliably (Hyprland advertises linux-dmabuf either way), so the
+// first creation tries the default and falls back to pixman, and the answer
+// is remembered across sessions.
+
+const rendererPixman = "pixman"
+
+func rendererStatePath() string {
+	base := os.Getenv("XDG_STATE_HOME")
+	if base == "" {
+		base = filepath.Join(os.Getenv("HOME"), ".local", "state")
+	}
+	return filepath.Join(base, "hyprcage", "renderer")
+}
+
+// KnownRenderer returns the renderer learnt by a previous creation ("" when
+// the default GLES renderer works or nothing is known yet).
+func KnownRenderer(configured string) string {
+	if v := os.Getenv("HYPRCAGE_RENDERER"); v != "" {
+		return strings.ToLower(strings.TrimSpace(v))
+	}
+	if configured != "" && configured != "auto" {
+		return configured
+	}
+	data, err := os.ReadFile(rendererStatePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func rememberRenderer(r string) {
+	p := rendererStatePath()
+	_ = os.MkdirAll(filepath.Dir(p), 0o700)
+	_ = os.WriteFile(p, []byte(r+"\n"), 0o600)
+}
+
+// rendererCandidates lists what to try, in order: the learnt renderer alone,
+// else the default followed by pixman.
+func rendererCandidates(configured string) []string {
+	switch KnownRenderer(configured) {
+	case rendererPixman:
+		return []string{rendererPixman}
+	case "gles2", "gles", "default":
+		return []string{""}
+	}
+	return []string{"", rendererPixman}
+}

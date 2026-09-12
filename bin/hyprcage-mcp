@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# MCP launcher shipped in the plugin (.mcp.json points here): finds hyprcage,
+# installs it on the first run, then serves MCP on stdio. The plugin's own
+# version pins the release, so plugin and binary evolve together.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+find_bin() {
+  command -v hyprcage 2>/dev/null && return
+  [ -x "$HOME/.local/bin/hyprcage" ] && echo "$HOME/.local/bin/hyprcage"
+}
+bin=$(find_bin || true)
+if [ -z "$bin" ]; then
+  ver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -1)
+  echo "hyprcage: first run, installing the binary (v$ver)" >&2
+  HYPRCAGE_VERSION=${HYPRCAGE_VERSION:-v$ver} bash "$root/install.sh" --binary-only \
+    || { echo "hyprcage: could not install the binary; from a terminal: bash $root/install.sh" >&2; exit 1; }
+  bin=$(find_bin || true)
+  [ -n "$bin" ] || { echo "hyprcage: binary still not found after installing" >&2; exit 1; }
+fi
+exec "$bin" mcp

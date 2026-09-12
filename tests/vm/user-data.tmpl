@@ -1,0 +1,12 @@
+#cloud-config
+hostname: hyprcage-vm
+users:
+  - name: arch
+    groups: [wheel, video, input]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - @PUBKEY@
+ssh_pwauth: false
+package_update: false
