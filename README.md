@@ -126,8 +126,9 @@ renderer = "auto"     # cage renderer: auto, gles (GPU) or pixman (software)
 Arch Linux and derivatives, Hyprland ≥ 0.50 in either configuration mode
 (`hyprland.conf` or `hyprland.lua`), any launcher, any desktop shell.
 Verified on Hyprland 0.56 with vanilla Arch and with Omarchy, on a real GPU
-(NVIDIA, cage's GLES renderer) and under software rendering. Not yet tested:
-HiDPI outputs, aarch64 at runtime.
+(NVIDIA, cage's GLES renderer) and under software rendering, with the
+human's monitor at scale 1, 1.6 and 2. The aarch64 build passes the test
+suite under emulation; it has not run on ARM hardware yet.
 
 Browsers and Electron apps are single-instance: launch them in a cage with
 their own profile, or with yours closed.

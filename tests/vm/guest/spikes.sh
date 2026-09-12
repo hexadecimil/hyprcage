@@ -26,6 +26,15 @@ $H doctor; drv=$($H doctor --json | jq -r '.[]|select(.name=="config driver")|.d
 # EXPECT_DRIVER=lua|classic asserts the mode the VM was started in (hypr-start.sh HYPR_CONFIG).
 if [ -n "${EXPECT_DRIVER:-}" ]; then [ "$drv" = "$EXPECT_DRIVER" ] && pass "S8 config driver detected as $drv" || fail "S8 config driver is $drv, expected $EXPECT_DRIVER"; fi
 
+# HUMAN_MONITORS=2 adds a second monitor for the human (a headless output
+# outside hyprcage's prefix), placed to the right, so that the migration of
+# workspaces at `output remove` has two possible targets, as on a laptop
+# with an external display.
+if [ "${HUMAN_MONITORS:-1}" = 2 ] && ! hyprctl -j monitors | jq -e '.[]|select(.name=="hm-2")' >/dev/null; then
+  if [ "$drv" = lua ]; then hyprctl eval 'hl.monitor({ output = "hm-2", mode = "1920x1080@60", position = "1280x0", scale = 1 })' >/dev/null; else hyprctl keyword monitor 'hm-2,1920x1080@60,1280x0,1' >/dev/null; fi
+  hyprctl output create headless hm-2 >/dev/null; sleep 1
+  info "second human monitor: $(hyprctl -j monitors | jq -c '.[]|select(.name=="hm-2")|{width,height,x,y,ws:.activeWorkspace.id}')"
+fi
 before=$(snap); info "human state before: $before"
 ws_before=$(hyprctl -j workspaces | jq -c '[.[]|select(.id<=10)|.id]|sort')
 

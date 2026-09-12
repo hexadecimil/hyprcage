@@ -72,9 +72,7 @@ func GC(c *Ctx, opts GCOptions) (GCReport, error) {
 			if !strings.HasPrefix(m.Name, c.Cfg.OutputPrefix) || known[m.Name] {
 				continue
 			}
-			before := captureHuman(c.Hypr, c.Cfg.OutputPrefix)
-			if err := c.Hypr.RemoveOutput(m.Name); err == nil {
-				restoreHuman(c.Hypr, c.Driver, before, c.Cfg.OutputPrefix)
+			if err := removeOutputRestoring(c, m.Name); err == nil {
 				rep.Orphans = append(rep.Orphans, "output "+m.Name)
 			}
 		}
