@@ -103,7 +103,7 @@ func Run() (Report, error) {
 	if last == nil {
 		last = errors.New("no way to ask for root here (no sudo without password, no terminal, no pkexec)")
 	}
-	return rep, fmt.Errorf("%v — from a terminal: %s", last, rep.Manual)
+	return rep, fmt.Errorf("%v. From a terminal: %s", last, rep.Manual)
 }
 
 func stdinIsTerminal() bool {

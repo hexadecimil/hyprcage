@@ -28,7 +28,7 @@ type Error struct {
 
 func (e *Error) Error() string {
 	if e.Hint != "" {
-		return fmt.Sprintf("%s: %s — %s", e.Code, e.Msg, e.Hint)
+		return fmt.Sprintf("%s: %s (%s)", e.Code, e.Msg, e.Hint)
 	}
 	return fmt.Sprintf("%s: %s", e.Code, e.Msg)
 }

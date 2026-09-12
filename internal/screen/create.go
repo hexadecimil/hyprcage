@@ -274,7 +274,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	if cfg.Notify {
 		body := opts.Name
 		if rec.WorkspaceMirror > 0 {
-			body = fmt.Sprintf("%s — SUPER+%d to watch", opts.Name, rec.WorkspaceMirror)
+			body = fmt.Sprintf("%s, mirror on workspace %d", opts.Name, rec.WorkspaceMirror)
 		}
 		notify.Send("Agent screen opened", body)
 	}

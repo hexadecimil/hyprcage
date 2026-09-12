@@ -91,7 +91,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintf(w, "hyprcage %s — a caged desktop for AI agents on Hyprland\n\nUsage: hyprcage <command> [options]\n\nCommands:\n", version.Version)
+	fmt.Fprintf(w, "hyprcage %s: a caged desktop for AI agents on Hyprland\n\nUsage: hyprcage <command> [options]\n\nCommands:\n", version.Version)
 	for _, c := range commands {
 		if c.hidden {
 			continue

@@ -142,7 +142,7 @@ func (id Identity) Owner() registry.Owner {
 }
 
 // IsAlive implements cahier §5.2: the owner is alive while its pid exists
-// (same start time), or — for a known session — while one of its records
+// (same start time), or, for a known session, while one of its records
 // carries a heartbeat younger than the grace period, which covers a restart
 // under a new pid. /clear (same pid, new id) is handled by the hooks, not here.
 func IsAlive(owner registry.Owner, heartbeat time.Time, grace time.Duration) bool {
