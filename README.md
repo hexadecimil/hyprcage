@@ -57,10 +57,11 @@ hyprcage setup && hyprcage doctor
 | OpenCode | `~/.config/opencode/opencode.json` | `~/.config/opencode/skills` | closed by the safety timer |
 | Any MCP client | `hyprcage mcp` on stdio | `skills/hyprcage/SKILL.md` | closed by the safety timer |
 
-The installer does the registration for the agents it finds. Only the
-Claude Code plugin carries session hooks, which close an agent's screens the
-moment its session ends. Elsewhere, the safety timer closes them within 15
-minutes.
+The installer registers hyprcage with every agent it finds. To choose,
+`install.sh --agents codex,cursor` limits it to those, and `--agents none`
+skips the step. Only the Claude Code plugin carries session hooks, which
+close an agent's screens the moment its session ends. Elsewhere, the safety
+timer closes them within 15 minutes.
 
 ## Usage
 

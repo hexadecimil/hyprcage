@@ -70,6 +70,12 @@ bash "$R/install.sh" --uninstall >/dev/null 2>&1
 grep -q "codex mcp remove hyprcage" ~/fake-agents.log && grep -q "gemini mcp remove -s user hyprcage" ~/fake-agents.log && pass "uninstall: codex and gemini unregistered" || fail "uninstall: $(grep remove ~/fake-agents.log)"
 [ "$(jq -r '.mcpServers.hyprcage // "gone"' ~/.cursor/mcp.json)" = gone ] && [ "$(jq -r '.mcpServers.other.command' ~/.cursor/mcp.json)" = x ] && [ "$(jq -r '.mcp.hyprcage // "gone"' ~/.config/opencode/opencode.json)" = gone ] && pass "uninstall: JSON entries removed, others kept" || fail "uninstall: cursor=$(cat ~/.cursor/mcp.json) opencode=$(cat ~/.config/opencode/opencode.json)"
 [ ! -e ~/.cursor/skills/hyprcage ] && [ ! -e ~/.codex/skills/hyprcage ] && pass "uninstall: skills removed" || fail "uninstall: skills left"
+echo "== --agents limits the registration"
+n=$(grep -c 'mcp add' ~/fake-agents.log); mkdir -p ~/.cursor ~/.config/opencode
+bash "$R/install.sh" --agents cursor >/dev/null 2>&1
+[ "$(jq -r '.mcpServers.hyprcage.command' ~/.cursor/mcp.json)" = "$bin" ] && pass "--agents cursor: cursor registered" || fail "--agents cursor: $(cat ~/.cursor/mcp.json)"
+[ "$(jq -r '.mcp.hyprcage // "none"' ~/.config/opencode/opencode.json 2>/dev/null || echo none)" = none ] && [ "$(grep -c 'mcp add' ~/fake-agents.log)" = "$n" ] && pass "--agents cursor: nobody else touched" || fail "--agents cursor: others touched"
+bash "$R/install.sh" --uninstall >/dev/null 2>&1
 rm -f ~/.local/bin/codex ~/.local/bin/gemini; rm -rf ~/.cursor ~/.codeium ~/.config/opencode ~/.codex ~/.claude
 command -v cage >/dev/null && pass "uninstall leaves cage, as documented" || fail "uninstall removed cage"
 bash "$R/install.sh" --binary-only >/dev/null 2>&1 || true   # back in place for the other suites

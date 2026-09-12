@@ -14,6 +14,9 @@
 #   4. hyprcage doctor.
 #
 # Options and environment:
+#   --agents LIST            which agents to register, comma-separated among
+#                            claude, codex, gemini, cursor, windsurf, opencode,
+#                            or none (default: every agent found on the machine)
 #   --binary-only            step 2 only (what the plugin's launcher runs)
 #   --uninstall              remove the binary, the plugin and hyprcage's state
 #   HYPRCAGE_VERSION=vX.Y.Z  pin a release (default: the latest)
@@ -25,6 +28,7 @@ set -euo pipefail
 
 REPO=${HYPRCAGE_REPO:-hexadecimil/hyprcage}
 BIN_DIR=${HYPRCAGE_BIN_DIR:-$HOME/.local/bin}
+AGENTS=${HYPRCAGE_AGENTS:-all}
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")
 PACKAGES=(cage wl-mirror)
 
@@ -156,37 +160,41 @@ install_skill() {
 # and, outside Claude Code, a copy of the skill. Claude Code alone gets the
 # session hooks through its plugin; elsewhere screens of a finished session
 # are closed by the safety timer.
+# wanted NAME: is this agent selected by --agents (default: all found)?
+wanted() { case ",$AGENTS," in *,all,* | *,"$1",*) return 0 ;; esac; return 1; }
+
 register_agents() {
   local bin=$BIN_DIR/hyprcage found=0
-  if have claude; then found=1; register_plugin
-  elif [ -d "$HOME/.claude" ]; then found=1; say "Claude Code (no claude CLI in PATH): in a session run  /plugin marketplace add $REPO  then  /plugin install hyprcage@hyprcage"
+  [ "$AGENTS" = none ] && { say "no agent registration asked (--agents none)"; return; }
+  if wanted claude && have claude; then found=1; register_plugin
+  elif wanted claude && [ -d "$HOME/.claude" ]; then found=1; say "Claude Code (no claude CLI in PATH): in a session run  /plugin marketplace add $REPO  then  /plugin install hyprcage@hyprcage"
   fi
-  if have codex; then
+  if wanted codex && have codex; then
     found=1
     if grep -qs '^\[mcp_servers\.hyprcage\]' "$HOME/.codex/config.toml"; then say "codex: already registered"
     elif codex mcp add hyprcage -- "$bin" mcp >/dev/null 2>&1; then say "codex: MCP server registered"
     else warn "codex: run  codex mcp add hyprcage -- $bin mcp"; fi
     install_skill "$HOME/.codex/skills"
   fi
-  if have gemini; then
+  if wanted gemini && have gemini; then
     found=1
     if gemini mcp list 2>/dev/null | grep -q hyprcage; then say "gemini: already registered"
     elif gemini mcp add -s user hyprcage "$bin" mcp >/dev/null 2>&1; then say "gemini: MCP server registered"
     else warn "gemini: run  gemini mcp add -s user hyprcage $bin mcp"; fi
   fi
-  if [ -d "$HOME/.cursor" ]; then
+  if wanted cursor && [ -d "$HOME/.cursor" ]; then
     found=1; json_set "$HOME/.cursor/mcp.json" mcpServers "{\"command\":\"$bin\",\"args\":[\"mcp\"]}" && say "cursor: MCP server registered"
     install_skill "$HOME/.cursor/skills"
   fi
-  if [ -d "$HOME/.codeium/windsurf" ]; then
+  if wanted windsurf && [ -d "$HOME/.codeium/windsurf" ]; then
     found=1; json_set "$HOME/.codeium/windsurf/mcp_config.json" mcpServers "{\"command\":\"$bin\",\"args\":[\"mcp\"]}" && say "windsurf: MCP server registered"
     install_skill "$HOME/.codeium/windsurf/skills"
   fi
-  if have opencode || [ -d "$HOME/.config/opencode" ]; then
+  if wanted opencode && { have opencode || [ -d "$HOME/.config/opencode" ]; }; then
     found=1; json_set "$HOME/.config/opencode/opencode.json" mcp "{\"type\":\"local\",\"command\":[\"$bin\",\"mcp\"],\"enabled\":true}" && say "opencode: MCP server registered"
     install_skill "$HOME/.config/opencode/skills"
   fi
-  [ $found = 1 ] || say "no known agent found; any MCP client can run  $bin mcp  (see the README)"
+  [ $found = 1 ] || say "no selected agent found; any MCP client can run  $bin mcp  (see the README)"
 }
 
 unregister_agents() {
@@ -229,10 +237,21 @@ uninstall() {
 
 # --- main ------------------------------------------------------------------------------
 
-case ${1:-} in
-  --binary-only) install_binary ;;
-  --uninstall) uninstall ;;
-  "")
+mode=install
+while [ $# -gt 0 ]; do
+  case $1 in
+    --binary-only) mode=binary ;;
+    --uninstall) mode=uninstall ;;
+    --agents) shift; AGENTS=${1:-}; [ -n "$AGENTS" ] || die "--agents needs a list" ;;
+    --agents=*) AGENTS=${1#--agents=} ;;
+    *) die "usage: install.sh [--agents LIST] [--binary-only | --uninstall]" ;;
+  esac
+  shift
+done
+case $mode in
+  binary) install_binary ;;
+  uninstall) uninstall ;;
+  install)
     [ "$(uname -s)" = Linux ] || die "hyprcage runs on Linux with Hyprland"
     have Hyprland || warn "Hyprland not found in PATH; hyprcage needs a running Hyprland to do anything"
     install_packages
@@ -242,5 +261,4 @@ case ${1:-} in
     say "checking the installation"
     "$BIN_DIR/hyprcage" doctor || true
     ;;
-  *) die "usage: install.sh [--binary-only | --uninstall]" ;;
 esac
