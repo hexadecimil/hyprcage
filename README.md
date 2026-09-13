@@ -83,8 +83,8 @@ The agent gets `screen_create`, `app_launch`, `screenshot`, `click`, `type`,
 Its skill tells it to use a screen for anything it launches for itself, one
 application per screen, and to close it when done.
 
-Each screen opens a mirror window on one of your spare workspaces, 6 to 9
-by default. Switch to it with your usual workspace binding to watch the
+A screen normally opens a mirror window on one of your spare workspaces, 6
+to 9 by default. Switch to it with your usual workspace binding to watch the
 agent live. Nothing you do there reaches the agent. Every tool has a
 command-line twin: `hyprcage create`, `launch`, `shot`, `click`, `type`,
 `destroy`, `list`, `doctor`.
@@ -102,24 +102,32 @@ every key optional.
 
 ```toml
 [screen]
-width = 1280          # width of a new screen, in pixels
-height = 800          # height of a new screen, in pixels
-max_width = 3840      # widest screen an agent may ask for
-max_height = 2160     # tallest screen an agent may ask for
-max_per_session = 4   # screens one session may keep open at once (0 = no limit)
-mirror = true         # open a mirror window where you can watch a screen
-notify = true         # desktop notification when a screen opens or closes
+width = 1280          # a new screen is this wide, and so is every screenshot of it
+height = 800          # and this tall, 1280x800 being what vision models read best
+max_width = 3840      # refuse a wider screen, whichever agent asks for it
+max_height = 2160     # refuse a taller one
+max_per_session = 4   # screens one agent session may hold at once, 0 lifts the limit
+mirror = true         # open the window you watch a screen through, unless the agent says otherwise
+notify = true         # tell you, through your desktop notifications, when a screen opens or closes
 
 [workspaces]
-agent = [11, 99]      # workspaces the agent's screens take, one each
-mirror = [6, 9]       # workspaces the mirror windows open on, first free one
+agent = [11, 99]      # the screens live here, one workspace each, out of your way
+mirror = [6, 9]       # the mirror windows land here, on the first workspace holding nothing
 
 [lifecycle]
-safety_timer = "15m"  # delay after which a screen of a dead session is closed
+safety_timer = "15m"  # close a screen this long after the session that opened it died
 
 [cage]
-renderer = "auto"     # cage renderer: auto, gles (GPU) or pixman (software)
+renderer = "auto"     # auto tries the GPU first and falls back, gles or pixman forces one
 ```
+
+**The mirror window.** `mirror` is a default, not a rule. With `mirror = true`
+every screen opens its window unless the agent has a reason not to, for
+instance a long batch you never asked to watch. With `mirror = false` no
+screen opens one unless the agent judges that this one is worth showing you.
+Agents are told to leave the choice to you unless you said something about
+watching. When a screen has no mirror, `hyprcage list` gives the reason in
+`mirror_note`, and `wl-mirror <screen>` opens one at any time.
 
 ## Compatibility
 
@@ -128,6 +136,14 @@ Arch Linux and derivatives, Hyprland ≥ 0.50 in either configuration mode
 Verified on Hyprland 0.56 with vanilla Arch and with Omarchy, on a real GPU
 and under software rendering, at monitor scales 1, 1.6 and 2. The aarch64
 build is tested under emulation only.
+
+A screen adds and removes a Hyprland output, which desktop shells watch.
+Some of them run their display logic again on every such event, Omarchy
+among them, which on a laptop can make a real monitor blink. hyprcage keeps
+its own share of that to one output declaration per screen, and puts back
+any workspace, focus or cursor position the removal moved, but the rest
+belongs to the shell. `~/.local/state/hyprcage/log/restore.log` records
+everything that moved under you and whether it was put back.
 
 Browsers and Electron apps are single-instance: launch them in a cage with
 their own profile, or with yours closed.

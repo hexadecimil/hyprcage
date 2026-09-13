@@ -300,7 +300,7 @@ func runClose(e *Env) int {
 	if err != nil {
 		return e.fail(err)
 	}
-	if err := cl.CloseToplevel(uint32(id)); err != nil {
+	if _, err := screen.CloseWindow(cl, uint32(id)); err != nil {
 		return e.fail(err)
 	}
 	return ExitOK

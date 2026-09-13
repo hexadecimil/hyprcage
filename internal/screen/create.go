@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"time"
 
@@ -22,8 +21,22 @@ type CreateOptions struct {
 	Name   string
 	Width  int
 	Height int
-	Mirror bool
+	// Mirror opens the human's mirror window. nil means the caller has no
+	// opinion and screen.mirror in the configuration decides: that key is
+	// the default, not a veto, so a caller may open a mirror on a machine
+	// that does not ask for one and drop it on a machine that does.
+	Mirror *bool
 	Owner  registry.Owner
+}
+
+// mirrorWanted resolves the two opinions about the human's mirror window.
+// The configuration carries the human's default and the caller may depart
+// from it in either direction: a caller with no opinion passes nil.
+func mirrorWanted(want *bool, configured bool) bool {
+	if want != nil {
+		return *want
+	}
+	return configured
 }
 
 // Create implements cahier §4.2. Step 7's check of cage's four Wayland
@@ -33,6 +46,8 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	cfg := c.Cfg
 	if opts.Name == "" {
 		opts.Name = NewName(cfg.OutputPrefix)
+	} else {
+		opts.Name = Prefixed(opts.Name, cfg.OutputPrefix)
 	}
 	if err := ValidateName(opts.Name); err != nil {
 		return nil, err
@@ -88,10 +103,15 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	if wsApp == 0 {
 		return nil, fmt.Errorf("no free workspace in [%d, %d]", cfg.WorkspaceMin, cfg.WorkspaceMax)
 	}
-	wsMirror := 0
-	if opts.Mirror && cfg.MirrorEnabled {
-		if _, err := exec.LookPath("wl-mirror"); err == nil {
-			wsMirror = freeWorkspace(used, cfg.MirrorMin, cfg.MirrorMax)
+	wsMirror, mirrorNote := 0, ""
+	switch {
+	case !mirrorWanted(opts.Mirror, cfg.MirrorEnabled):
+		mirrorNote = "not asked for"
+	default:
+		if _, err := exec.LookPath("wl-mirror"); err != nil {
+			mirrorNote = "wl-mirror is not installed"
+		} else if wsMirror = freeWorkspace(used, cfg.MirrorMin, cfg.MirrorMax); wsMirror == 0 {
+			mirrorNote = fmt.Sprintf("workspaces %d to %d all have windows", cfg.MirrorMin, cfg.MirrorMax)
 		}
 	}
 
@@ -118,7 +138,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	rec := &registry.Screen{
 		Name: opts.Name, CreatedAt: time.Now(), State: "starting",
 		Width: opts.Width, Height: opts.Height, PosX: posX, PosY: posY,
-		WorkspaceApp: wsApp, WorkspaceMirror: wsMirror,
+		WorkspaceApp: wsApp, WorkspaceMirror: wsMirror, MirrorNote: mirrorNote,
 		Slice: sysd.SliceName(opts.Name), Owner: opts.Owner,
 	}
 	if err := registry.Save(rec); err != nil {
@@ -162,7 +182,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	// the agent's screen is the cage window, captured inside cage, never
 	// the Hyprland output. A bar that attaches a moment later is handled
 	// below, when the cage window turns out too small.
-	waitForBar(c, opts.Name, cfg.OutputPrefix)
+	waitForBar(c, opts.Name, cfg.OutputPrefix, knownScreens())
 	if changed, err := fitReserved(c, rec); err != nil {
 		return fail(err)
 	} else if changed {
@@ -223,6 +243,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 			break
 		}
 		if i == len(candidates)-1 {
+			forgetRenderer() // what was learnt did not work: try everything again
 			return fail(err)
 		}
 		rememberRenderer(rendererPixman) // next candidate; skip GLES next time
@@ -254,7 +275,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 		}
 		mrules := hypr.ExecRules{Workspace: fmt.Sprintf("%d silent", wsMirror), NoInitialFocus: true, NoAnim: true}
 		if err := c.Driver.Exec(shellq.Join(margv), mrules); err != nil {
-			rec.WorkspaceMirror = 0
+			rec.WorkspaceMirror, rec.MirrorNote = 0, "wl-mirror could not be started"
 		} else {
 			waitMirrorWindow(c.Hypr, opts.Name, wsMirror, 4*time.Second) // best effort
 		}
@@ -288,10 +309,24 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 // a reading taken in that instant would say there is no bar.
 func Reassert(c *Ctx, rec *registry.Screen) error {
 	w, h := fittedSize(rec.Width, rec.Height, rec.Reserved)
-	if err := c.Driver.DeclareMonitor(rec.Name, w, h, c.Cfg.RefreshHz, rec.PosX, rec.PosY, 1); err != nil {
+	if err := declareIfMoved(c, rec, w, h); err != nil {
 		return err
 	}
 	return c.Driver.WorkspaceRule(rec.WorkspaceApp, rec.Name)
+}
+
+// declareIfMoved applies the output declaration only when the live output
+// does not already have that geometry. Every declaration goes through
+// Hyprland's monitor rules, and those are re-applied to every monitor,
+// which on a real machine can cost the human a modeset: a screen that goes
+// black for an instant and comes back. One declaration per screen cannot be
+// avoided, the repeats can.
+func declareIfMoved(c *Ctx, rec *registry.Screen, w, h int) error {
+	if m, err := waitMonitor(c.Hypr, rec.Name, time.Second); err == nil &&
+		m.Width == w && m.Height == h && m.X == rec.PosX && m.Y == rec.PosY && m.Scale == 1 {
+		return nil
+	}
+	return c.Driver.DeclareMonitor(rec.Name, w, h, c.Cfg.RefreshHz, rec.PosX, rec.PosY, 1)
 }
 
 // Refit re-declares the output of a screen if its reserved area changed (a
@@ -327,14 +362,14 @@ func ReservedArea(c *Ctx, rec *registry.Screen) ([4]int, bool) {
 // area (the system has such a bar), and at most barGrace: a bar confined
 // to one monitor costs that much once per screen, a system without a bar
 // costs nothing.
-func waitForBar(c *Ctx, name, prefix string) {
+func waitForBar(c *Ctx, name, prefix string, known map[string]bool) {
 	mons, err := c.Hypr.Monitors()
 	if err != nil {
 		return
 	}
 	hasBar := false
 	for _, m := range mons {
-		if !strings.HasPrefix(m.Name, prefix) && m.Reserved != [4]int{} {
+		if !isAgentOutput(m.Name, prefix, known) && m.Reserved != [4]int{} {
 			hasBar = true
 		}
 	}
@@ -446,6 +481,12 @@ func startDetached(argv []string) {
 	go func() { _ = cmd.Wait() }()
 }
 
+// captureProbe is how long the probe waits. It is generous because the
+// deadline is shared with the machine: a loaded CPU can delay a capture that
+// works perfectly well, and calling that a broken renderer would send every
+// later screen to the slow one.
+const captureProbe = 15 * time.Second
+
 // probeCapture checks that screencopy actually completes on a screen, with a
 // short deadline: it hangs under virgl's GLES path, so a timeout here means
 // the renderer must change. The abandoned connection is closed on return.
@@ -463,9 +504,9 @@ func probeCapture(display string) error {
 	case e := <-done:
 		cl.Close()
 		return e
-	case <-time.After(6 * time.Second):
+	case <-time.After(captureProbe):
 		cl.Close()
-		return errf(CodeCage, "the GPU renderer cannot be captured; forcing pixman", "screencopy did not complete")
+		return errf(CodeCapture, "the renderer in use cannot be captured, or the machine is too busy to answer in time", "screencopy did not complete within %s", captureProbe)
 	}
 }
 

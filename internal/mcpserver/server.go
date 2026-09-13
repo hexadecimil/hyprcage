@@ -217,7 +217,7 @@ func (s *Server) afterAction(rec *registry.Screen, cl *wl.Client, want bool, set
 type createIn struct {
 	Name   string `json:"name,omitempty" jsonschema:"optional screen name matching [a-z0-9-]{1,32}; default hc-<random>"`
 	Size   string `json:"size,omitempty" jsonschema:"WxH in pixels, default 1280x800 (configurable); keep every side at or below 2000"`
-	Mirror *bool  `json:"mirror,omitempty" jsonschema:"open a mirror window for the human on a mirror workspace, 6-9 by default (default true)"`
+	Mirror *bool  `json:"mirror,omitempty" jsonschema:"open a mirror window on one of the human's workspaces so they can watch. Leave it out to follow the human's configuration, which is what they want by default. Pass true when they asked to see the work or when showing it is the point, false for a screen they have no reason to watch"`
 }
 
 type screenIn struct {
@@ -361,11 +361,11 @@ func tool[In any](s *Server, srv *mcp.Server, name, desc string, h handler[In]) 
 
 func (s *Server) register(srv *mcp.Server) {
 	tool(s, srv, "setup", "Install what hyprcage needs on this machine (cage, wl-mirror) through the package manager. A password dialog opens on the human's screen: tell the human before calling it. Use it when screen_create fails with cage_missing, then retry.", s.setup)
-	tool(s, srv, "screen_create", "Create a virtual screen for yourself (headless output + nested compositor). Returns its name; use it in every other tool. Destroy it when done.", s.screenCreate)
+	tool(s, srv, "screen_create", "Create a virtual screen for yourself (headless output + nested compositor). Returns its name; use it in every other tool. Destroy it when done. The reply carries mirror_note when there is no mirror window for the human, and why.", s.screenCreate)
 	tool(s, srv, "screen_destroy", "Close a screen you created: kills its applications, removes the output and the mirror.", s.screenDestroy)
 	tool(s, srv, "screen_list", "List your screens (or every session's with all=true).", s.screenList)
 	tool(s, srv, "app_launch", "Run a graphical application inside a screen. Returns its pid and, once it appears, its window.", s.appLaunch)
-	tool(s, srv, "app_close", "Ask a window of the screen to close gracefully.", s.appClose)
+	tool(s, srv, "app_close", "Ask a window of the screen to close gracefully. Window ids change when a window remaps, so take the id from windows rather than from an older reply.", s.appClose)
 	tool(s, srv, "windows", "List the windows of a screen with their ids, titles and app ids.", s.windows)
 	tool(s, srv, "screenshot", "Capture the screen. Returns the image plus its geometry; coordinates for other tools are screen pixels.", s.screenshot)
 	tool(s, srv, "click", "Click at screen coordinates (left by default; count=2 for a double click).", s.click)
@@ -392,11 +392,7 @@ func (s *Server) screenCreate(in createIn) (*mcp.CallToolResult, error) {
 			return nil, fmt.Errorf("size must be WxH, got %q", in.Size)
 		}
 	}
-	mirror := true
-	if in.Mirror != nil {
-		mirror = *in.Mirror
-	}
-	rec, err := screen.Create(c, screen.CreateOptions{Name: in.Name, Width: w, Height: h, Mirror: mirror, Owner: session.Current().Owner()})
+	rec, err := screen.Create(c, screen.CreateOptions{Name: in.Name, Width: w, Height: h, Mirror: in.Mirror, Owner: session.Current().Owner()})
 	if err != nil {
 		return nil, err
 	}
@@ -404,6 +400,9 @@ func (s *Server) screenCreate(in createIn) (*mcp.CallToolResult, error) {
 		"screen": rec.Name, "width": rec.Width, "height": rec.Height,
 		"workspace_app": rec.WorkspaceApp, "workspace_mirror": rec.WorkspaceMirror,
 		"note": "coordinates are screen pixels; call screen_destroy when done",
+	}
+	if rec.MirrorNote != "" {
+		out["mirror_note"] = rec.MirrorNote
 	}
 	return textResult(out), nil
 }
@@ -515,10 +514,15 @@ func (s *Server) appClose(in closeIn) (*mcp.CallToolResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cl.CloseToplevel(in.Toplevel); err != nil {
+	closed, err := screen.CloseWindow(cl, in.Toplevel)
+	if err != nil {
 		return nil, err
 	}
-	return textResult(map[string]any{"closed": in.Toplevel}), nil
+	out := map[string]any{"closed": closed}
+	if closed != in.Toplevel {
+		out["note"] = "the window had remapped and carried a new id, the only window of the screen was closed"
+	}
+	return textResult(out), nil
 }
 
 func (s *Server) windows(in screenIn) (*mcp.CallToolResult, error) {

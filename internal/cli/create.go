@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/hexadecimil/hyprcage/internal/config"
@@ -12,7 +13,8 @@ func runCreate(e *Env) int {
 	fs := e.flags("create")
 	size := fs.String("size", "", "WxH (default 1280x800)")
 	name := fs.String("name", "", "screen name (default hc-<random>)")
-	noMirror := fs.Bool("no-mirror", false, "do not open a mirror window for the human")
+	mirror := fs.Bool("mirror", false, "open a mirror window whatever screen.mirror says in the configuration")
+	noMirror := fs.Bool("no-mirror", false, "do not open a mirror window, whatever screen.mirror says")
 	asJSON := fs.Bool("json", false, "print the record as JSON")
 	if err := e.parse(fs); err != nil {
 		return ExitUsage
@@ -29,8 +31,21 @@ func runCreate(e *Env) int {
 	if err != nil {
 		return e.fail(err)
 	}
+	// Mirror stays nil unless one of the two flags was given on the command
+	// line, and nil is what tells Create to follow screen.mirror.
+	var wantMirror *bool
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "mirror":
+			v := *mirror
+			wantMirror = &v
+		case "no-mirror":
+			v := !*noMirror
+			wantMirror = &v
+		}
+	})
 	rec, err := screen.Create(c, screen.CreateOptions{
-		Name: *name, Width: w, Height: h, Mirror: !*noMirror,
+		Name: *name, Width: w, Height: h, Mirror: wantMirror,
 		Owner: session.Current().Owner(),
 	})
 	if err != nil {
@@ -41,6 +56,9 @@ func runCreate(e *Env) int {
 	}
 	fmt.Fprintf(e.Stdout, "name=%s\nsize=%dx%d\nworkspace_app=%d\nworkspace_mirror=%d\ninner_display=%s\n",
 		rec.Name, rec.Width, rec.Height, rec.WorkspaceApp, rec.WorkspaceMirror, rec.InnerDisplay)
+	if rec.MirrorNote != "" {
+		fmt.Fprintf(e.Stdout, "mirror_note=%s\n", rec.MirrorNote)
+	}
 	return ExitOK
 }
 

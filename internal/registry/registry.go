@@ -35,6 +35,9 @@ type Screen struct {
 	PosY            int       `json:"pos_y"`
 	WorkspaceApp    int       `json:"ws_app"`
 	WorkspaceMirror int       `json:"ws_mirror"`
+	// MirrorNote says why there is no mirror window when ws_mirror is 0,
+	// so that an absent mirror is never something to go and investigate.
+	MirrorNote string `json:"mirror_note,omitempty"`
 	Slice           string    `json:"slice"`
 	InnerDisplay    string    `json:"inner_display"`
 	InnerX11        string    `json:"inner_x11,omitempty"`

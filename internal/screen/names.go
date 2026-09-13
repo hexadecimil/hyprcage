@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"regexp"
+	"strings"
 )
 
 var nameRE = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
@@ -15,6 +16,17 @@ func ValidateName(name string) error {
 		return errf(CodeInvalidName, "use lowercase letters, digits and dashes", "%q must match ^[a-z0-9-]{1,32}$", name)
 	}
 	return nil
+}
+
+// Prefixed is the screen name for a name a caller chose. The configured
+// prefix is forced on because it is what tells an agent output from one of
+// the human's monitors everywhere else, from the restoration of the human's
+// workspaces to the collection of orphan outputs.
+func Prefixed(name, prefix string) string {
+	if prefix == "" || strings.HasPrefix(name, prefix) {
+		return name
+	}
+	return prefix + name
 }
 
 // NewName returns prefix + 6 random hex characters.

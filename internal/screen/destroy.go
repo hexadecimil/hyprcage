@@ -22,7 +22,10 @@ type humanState struct {
 	focused string
 }
 
-func captureHuman(h *hypr.Instance, prefix string) *humanState {
+// captureHuman reads the state of the human's monitors. known is the set of
+// output names hyprcage owns, read once by the caller: everything that is
+// neither in it nor under the prefix belongs to the human.
+func captureHuman(h *hypr.Instance, prefix string, known map[string]bool) *humanState {
 	st := &humanState{active: map[string]int{}}
 	st.cursor, _ = h.CursorPos()
 	mons, err := h.Monitors()
@@ -30,7 +33,7 @@ func captureHuman(h *hypr.Instance, prefix string) *humanState {
 		return st
 	}
 	for _, m := range mons {
-		if strings.HasPrefix(m.Name, prefix) {
+		if isAgentOutput(m.Name, prefix, known) {
 			continue
 		}
 		st.active[m.Name] = m.ActiveWorkspace.ID
@@ -47,8 +50,8 @@ func captureHuman(h *hypr.Instance, prefix string) *humanState {
 // The dispatchers come from the driver: their spelling differs between the
 // classic and the Lua mode. The cursor alone is put back only when
 // cursorAlone is set: later passes leave a cursor the human may be moving.
-func restoreHuman(h *hypr.Instance, d hypr.ConfigDriver, before *humanState, prefix string, cursorAlone bool) bool {
-	after := captureHuman(h, prefix)
+func restoreHuman(h *hypr.Instance, d hypr.ConfigDriver, before *humanState, prefix string, known map[string]bool, cursorAlone bool) bool {
+	after := captureHuman(h, prefix, known)
 	var cmds []string
 	var moved []string
 	for name, ws := range before.active {
@@ -86,14 +89,15 @@ func restoreHuman(h *hypr.Instance, d hypr.ConfigDriver, before *humanState, pre
 // removal can see nothing to restore: the state is watched for a while and
 // put back every time it moves.
 func removeOutputRestoring(c *Ctx, name string) error {
-	before := captureHuman(c.Hypr, c.Cfg.OutputPrefix)
+	known := knownScreens()
+	before := captureHuman(c.Hypr, c.Cfg.OutputPrefix, known)
 	err := c.Hypr.RemoveOutput(name)
 	waitOutputGone(c.Hypr, name, time.Second)
-	restoreHuman(c.Hypr, c.Driver, before, c.Cfg.OutputPrefix, true)
+	restoreHuman(c.Hypr, c.Driver, before, c.Cfg.OutputPrefix, known, true)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(150 * time.Millisecond)
-		restoreHuman(c.Hypr, c.Driver, before, c.Cfg.OutputPrefix, false)
+		restoreHuman(c.Hypr, c.Driver, before, c.Cfg.OutputPrefix, known, false)
 	}
 	return err
 }

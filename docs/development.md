@@ -54,16 +54,52 @@ Such bars re-create their layer around every output change, so the watcher
 only follows a reserved area once it has held still, and `create` waits for
 the bar to land before launching cage.
 
-Omarchy's lid logic counts any output not named `eDP-*`, `LVDS-*` or `DSI-*`
-as external, an agent screen included: closing the lid of a laptop without a
-real external display while a screen exists switches the panel off.
+## The human's state
+
+Everything hyprcage does to Hyprland is aimed at one output, and the rule
+that separates that output from the human's monitors is the name: the
+configured prefix, `hc-` by default, forced onto every screen name by
+`Create`. The registry answers for a screen recorded before that rule
+existed. Get this wrong and `screen_destroy` restores a workspace that only
+ever lived on the agent's output, which leaves one of the human's monitors on
+an empty workspace.
+
+Removing an output makes Hyprland migrate its workspaces and can warp the
+cursor. `destroy` reads the active workspace of every monitor of the human
+plus the cursor and the focus, removes the output, then puts back whatever
+moved, and keeps watching for two seconds because a desktop's own scripts
+react after Hyprland does. Every move and every restoration is appended to
+`~/.local/state/hyprcage/log/restore.log`.
+
+## Monitor events and desktop shells
+
+Declaring an output goes through Hyprland's monitor rules, which are applied
+to every monitor: on a real machine that can cost a modeset, a monitor that
+goes black for an instant. `Reassert` and `Refit` therefore read the live
+geometry and declare nothing when it already matches, which leaves one
+declaration per screen.
+
+The rest is the shell's. Omarchy runs `omarchy-hyprland-monitor-watch`,
+which on every `monitoradded` and `monitorremoved` re-runs its clamshell
+logic four times over eleven seconds and can call `hyprctl reload`. Its
+`omarchy-hyprland-monitor-external-active` counts any output not named
+`eDP-*`, `LVDS-*` or `DSI-*` as an external display, an agent screen
+included, so closing the lid of a laptop with no real external display while
+a screen exists switches the panel off. None of this is reachable from
+hyprcage. What hyprcage owes the human is to add and remove one output per
+screen and nothing more.
 
 ## Renderer
 
 cage uses GLES by default. hyprcage probes one capture before handing the
 screen over and falls back to pixman when it does not complete, remembering
 the choice in `~/.local/state/hyprcage/renderer`. Virtualized GPUs (virgl)
-fail that probe with every renderer.
+fail that probe with every renderer. The probe waits 15 seconds because a
+loaded machine can delay a capture that works, and a renderer that was
+remembered and then failed is forgotten again, so one bad night never pins a
+machine to software rendering. A probe that times out answers
+`capture_failed`, never `cage_missing`, which is the code that sends an
+agent to `setup`.
 
 ## Test suite
 

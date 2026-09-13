@@ -24,6 +24,8 @@ type Config struct {
 	RefreshHz     int
 	WorkspaceMin  int // agent workspaces, one per screen
 	WorkspaceMax  int
+	// MirrorEnabled is the human's default for the mirror window, not a
+	// veto: a caller of Create may depart from it in either direction.
 	MirrorEnabled bool
 	MirrorMin     int // workspaces the mirror windows land on
 	MirrorMax     int

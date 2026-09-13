@@ -209,6 +209,27 @@ func WaitStable(cl *wl.Client, stable, timeout time.Duration, threshold float64)
 	}
 }
 
+// CloseWindow asks a window to close and returns the id it actually acted
+// on. A window id is a Wayland object id, and a new one is handed out when a
+// window remaps, which cage does when it puts a freshly opened window
+// fullscreen: the id a caller noted at launch can already be stale. When the
+// id is unknown and the screen holds exactly one window, that one is closed,
+// which covers the whole of the case under a single-application kiosk.
+func CloseWindow(cl *wl.Client, id uint32) (uint32, error) {
+	err := cl.CloseToplevel(id)
+	if err == nil {
+		return id, nil
+	}
+	tls, lerr := cl.Toplevels()
+	if lerr != nil || len(tls) != 1 {
+		return 0, err
+	}
+	if cerr := cl.CloseToplevel(tls[0].ID); cerr != nil {
+		return 0, err
+	}
+	return tls[0].ID, nil
+}
+
 // WaitTitle returns once a window title matches re.
 func WaitTitle(cl *wl.Client, re *regexp.Regexp, timeout time.Duration) (*wl.Toplevel, error) {
 	deadline := time.Now().Add(timeout)

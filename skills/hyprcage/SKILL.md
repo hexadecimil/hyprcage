@@ -23,11 +23,15 @@ of their spare workspaces (6–9 by default) and is never interrupted.
 The plugin installs its own binary on the first start. If `screen_create`
 fails with `cage_missing`, the machine lacks cage, the agent's compositor:
 tell the human that a password dialog is about to open, call `setup`, then
-retry. Nothing else to install.
+retry. Nothing else to install. `capture_failed` is a different answer: cage
+is there and the screen could not be captured, often a machine too busy to
+answer in time. Retry once, then tell the human. Calling `setup` for it
+installs nothing and asks them for a password for nothing.
 
 ## How (MCP tools)
 
 1. `screen_create` → **one screen per application** (cage shows one app at a time), 1280x800 by default. Remember its name.
+   The human watches a screen through a mirror window. Leave `mirror` out and their configuration decides, which is the right answer unless they said something: pass `true` when they asked to watch or when showing the result is the point, `false` for a long job they have no reason to see. The reply carries `mirror_note` when there is none, and why.
 2. `app_launch` with the command. Browsers: always a dedicated profile, and `--kiosk` with the URL when the task is a page (the whole screen is the page). Chromium: `chromium --ozone-platform=wayland --user-data-dir=/tmp/hc-profile --no-first-run --kiosk <url>`. Firefox: `mkdir -p /tmp/hc-ff && firefox --no-remote --profile /tmp/hc-ff --kiosk <url>` (the profile directory must exist). Drop `--kiosk` only when you need tabs or the address bar.
 3. `screenshot`, then `click` / `type` / `key` / `scroll` / `drag` with **screen pixel coordinates**. Use `wait` (stability or title) instead of sleeping. Ask for `screenshot_after` only when you need to see the result.
 4. `screen_destroy` **as soon as you are done**, before handing back to the human. If you keep a screen open between steps, say so.

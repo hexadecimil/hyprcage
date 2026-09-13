@@ -15,6 +15,10 @@ import (
 
 const rendererPixman = "pixman"
 
+// RendererStatePath is where the learnt renderer is kept, so that doctor can
+// tell the human which file to delete.
+func RendererStatePath() string { return rendererStatePath() }
+
 func rendererStatePath() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
@@ -37,6 +41,14 @@ func KnownRenderer(configured string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// forgetRenderer drops what a previous creation learnt. A remembered
+// renderer that then fails is a wrong memory: a busy machine can time a
+// probe out, and keeping the answer would hold every later screen on the
+// slow renderer. Forgetting it makes the next creation try both again.
+func forgetRenderer() {
+	_ = os.Remove(rendererStatePath())
 }
 
 func rememberRenderer(r string) {

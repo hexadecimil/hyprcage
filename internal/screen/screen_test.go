@@ -96,3 +96,50 @@ func TestCheckOwner(t *testing.T) {
 		t.Errorf("want not_owner, got %v", err)
 	}
 }
+
+func TestPrefixed(t *testing.T) {
+	cases := map[string]string{"dt": "hc-dt", "hc-dt": "hc-dt", "hc-": "hc-"}
+	for in, want := range cases {
+		if got := Prefixed(in, "hc-"); got != want {
+			t.Errorf("Prefixed(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := Prefixed("dt", ""); got != "dt" {
+		t.Errorf("an empty prefix must leave the name alone, got %q", got)
+	}
+}
+
+func TestIsAgentOutput(t *testing.T) {
+	known := map[string]bool{"dt": true} // a screen recorded before Prefixed
+	for _, agent := range []string{"hc-1a2b3c", "hc-dt", "dt"} {
+		if !isAgentOutput(agent, "hc-", known) {
+			t.Errorf("%q is an agent output", agent)
+		}
+	}
+	for _, human := range []string{"eDP-1", "HDMI-A-1", "DP-3"} {
+		if isAgentOutput(human, "hc-", known) {
+			t.Errorf("%q is one of the human's monitors", human)
+		}
+	}
+}
+
+func TestMirrorWanted(t *testing.T) {
+	yes, no := true, false
+	cases := []struct {
+		want       *bool
+		configured bool
+		result     bool
+	}{
+		{nil, true, true},   // no opinion: the configuration decides
+		{nil, false, false}, //
+		{&no, true, false},  // the caller may drop a mirror the human asks for
+		{&yes, false, true}, // and open one the human does not ask for
+		{&yes, true, true},  //
+		{&no, false, false}, //
+	}
+	for _, c := range cases {
+		if got := mirrorWanted(c.want, c.configured); got != c.result {
+			t.Errorf("mirrorWanted(%v, %v) = %v, want %v", c.want, c.configured, got, c.result)
+		}
+	}
+}

@@ -65,7 +65,7 @@ func runDoctor(e *Env) int {
 		}
 		add("config driver", "ok", inst.Driver().Mode()+" (override with HYPRCAGE_DRIVER=lua|classic)")
 		if r := screen.KnownRenderer(cfg.Renderer); r != "" {
-			add("cage renderer", "ok", r+" (learnt by a previous screen; override with HYPRCAGE_RENDERER)")
+			add("cage renderer", "ok", r+" (learnt by a previous screen, forget it with rm "+screen.RendererStatePath()+")")
 		} else {
 			add("cage renderer", "ok", "default (GLES), pixman tried automatically if no window appears")
 		}
@@ -96,7 +96,7 @@ func runDoctor(e *Env) int {
 			}
 		}
 		if len(busy) > 0 {
-			add("mirror workspaces", "warn", fmt.Sprintf("windows present on %v; mirrors take the first free one in [%d, %d]", keys(busy), cfg.MirrorMin, cfg.MirrorMax))
+			add("mirror workspaces", "warn", fmt.Sprintf("windows present on %v, mirrors take the first free one in [%d, %d]", keys(busy), cfg.MirrorMin, cfg.MirrorMax))
 		} else {
 			add("mirror workspaces", "ok", fmt.Sprintf("[%d, %d] free", cfg.MirrorMin, cfg.MirrorMax))
 		}

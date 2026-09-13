@@ -15,6 +15,7 @@ const (
 	CodeInvalidName Code = "invalid_name"
 	CodeHyprland    Code = "hyprland_unreachable"
 	CodeCage        Code = "cage_missing"
+	CodeCapture     Code = "capture_failed"
 	CodeTimeout     Code = "timeout"
 	CodeLimit       Code = "limit" // size or number of screens beyond the configuration
 )

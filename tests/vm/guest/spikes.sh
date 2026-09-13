@@ -143,4 +143,25 @@ create >/dev/null 2>"$OUT/typo.err" && fail "config: typo accepted" || { grep -q
 $H gc >/dev/null 2>&1 && pass "config: gc still runs on a broken config (defaults)" || fail "config: gc failed on a broken config"
 rm -f ~/.config/hyprcage/config.toml
 
+echo "== naming: an agent output always carries the prefix"
+out=$(create --name dt --no-mirror); name=$(echo "$out" | jq -r .name)
+[ "$name" = "hc-dt" ] && pass "a chosen name gets the prefix (hc-dt)" || fail "name is $name, want hc-dt"
+b=$(snap); $H destroy "$name" >/dev/null; sleep 2
+[ "$b" = "$(snap)" ] && pass "destroy of a named screen leaves the human's state alone" || fail "destroy of a named screen changed it: $(snap)"
+
+echo "== mirror: the configuration is the default, the caller may depart from it"
+mkdir -p ~/.config/hyprcage; printf '[screen]\nmirror = false\n' > ~/.config/hyprcage/config.toml
+out=$(create); name=$(echo "$out" | jq -r .name)
+[ "$(echo "$out" | jq -r .ws_mirror)" = 0 ] && pass "mirror = false: no mirror window by default" || fail "mirror = false opened one anyway"
+[ "$(echo "$out" | jq -r .mirror_note)" = "not asked for" ] && pass "the record says why there is none" || fail "mirror_note is $(echo "$out" | jq -r .mirror_note)"
+$H destroy "$name" >/dev/null
+out=$(create --mirror); name=$(echo "$out" | jq -r .name)
+[ "$(echo "$out" | jq -r .ws_mirror)" != 0 ] && pass "mirror = false: --mirror opens one" || fail "--mirror did not override the configuration"
+$H destroy "$name" >/dev/null
+printf '[screen]\nmirror = true\n' > ~/.config/hyprcage/config.toml
+out=$(create --no-mirror); name=$(echo "$out" | jq -r .name)
+[ "$(echo "$out" | jq -r .ws_mirror)" = 0 ] && pass "mirror = true: --no-mirror drops it" || fail "--no-mirror did not override the configuration"
+$H destroy "$name" >/dev/null
+rm -f ~/.config/hyprcage/config.toml
+
 echo; [ "$FAILED" = 0 ] && echo "ALL PASS" || echo "SOME FAILURES"; exit $FAILED
