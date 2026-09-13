@@ -54,6 +54,15 @@ rm -f ~/.local/bin/hyprcage
 bash "$R/bin/hyprcage-mcp" < /dev/null > ~/launcher.out 2> ~/launcher.err; rc=$?
 [ -x ~/.local/bin/hyprcage ] && pass "launcher installed the binary on first run" || fail "launcher did not install: $(tail -2 ~/launcher.err)"
 [ $rc = 0 ] && pass "launcher served MCP and exited cleanly on EOF" || fail "launcher rc=$rc: $(tail -2 ~/launcher.err)"
+echo "== plugin launcher: an outdated release is updated, a dev build is kept"
+cp ~/.local/bin/hyprcage ~/hyprcage.real
+printf '#!/bin/sh\n[ "$1" = version ] && echo v0.0.1\n' > ~/.local/bin/hyprcage; chmod +x ~/.local/bin/hyprcage
+bash "$R/bin/hyprcage-mcp" < /dev/null > /dev/null 2> ~/launcher2.err
+{ grep -q 'updating the binary' ~/launcher2.err && [ "$(~/.local/bin/hyprcage version)" != v0.0.1 ]; } && pass "launcher replaced an outdated binary" || fail "launcher kept v0.0.1: $(tail -2 ~/launcher2.err)"
+printf '#!/bin/sh\n[ "$1" = version ] && echo dev\n' > ~/.local/bin/hyprcage; chmod +x ~/.local/bin/hyprcage
+bash "$R/bin/hyprcage-mcp" < /dev/null > /dev/null 2> ~/launcher3.err
+[ "$(~/.local/bin/hyprcage version)" = dev ] && pass "launcher leaves a dev build alone" || fail "launcher replaced a dev build: $(tail -2 ~/launcher3.err)"
+mv ~/hyprcage.real ~/.local/bin/hyprcage
 bash "$R/bin/hyprcage-hook" session-start < /dev/null >/dev/null 2>&1 && pass "hook shim runs the hook" || fail "hook shim failed"
 mv ~/.local/bin/hyprcage ~/hyprcage.bak; bash "$R/bin/hyprcage-hook" session-start < /dev/null >/dev/null 2>&1 && pass "hook shim is silent without the binary" || fail "hook shim failed without the binary"; mv ~/hyprcage.bak ~/.local/bin/hyprcage
 
