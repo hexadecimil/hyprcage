@@ -14,8 +14,11 @@ jobs:
         with: { go-version-file: go.mod }
       - run: make dist
       # The annotated tag's message is the release text, followed by the
-      # generated list of changes.
-      - run: git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > notes.md
+      # generated list of changes. checkout leaves a lightweight tag in
+      # place of the annotated one, so the real tag is fetched again first.
+      - run: |
+          git fetch --force --tags
+          git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
