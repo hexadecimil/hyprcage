@@ -7,7 +7,7 @@ import (
 	"github.com/hexadecimil/hyprcage/internal/setup"
 )
 
-// runSetup installs cage and wl-mirror with the human's authorisation
+// runSetup installs cage with the human's authorisation
 // (sudo in a terminal, a polkit dialog otherwise).
 func runSetup(e *Env) int {
 	fs := e.flags("setup")
@@ -26,7 +26,7 @@ func runSetup(e *Env) int {
 	case err != nil:
 		return e.fail(err)
 	case len(rep.Missing) == 0:
-		fmt.Fprintln(e.Stdout, "nothing to install: cage and wl-mirror are present")
+		fmt.Fprintln(e.Stdout, "nothing to install: cage is present")
 	default:
 		fmt.Fprintf(e.Stdout, "installed %s via %s\n", strings.Join(rep.Installed, ", "), rep.Method)
 	}

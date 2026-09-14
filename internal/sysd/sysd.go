@@ -35,9 +35,11 @@ func GCTimerName(screen string) string    { return "hyprcage-gc-" + unitSafe(scr
 
 // ScopeArgs builds the argv that runs cmd in a transient scope of the
 // screen's slice with a 3 s stop timeout (the inherited default is 90 s).
+// The scope is collected once inactive, failed included: a process killed
+// at the timeout must not leave a failed unit that keeps its name busy.
 // Note: systemd-run --scope stays the parent of cmd, it does not exec it.
 func ScopeArgs(screen, role string, cmd []string) []string {
-	args := []string{"systemd-run", "--user", "--scope", "--quiet",
+	args := []string{"systemd-run", "--user", "--scope", "--quiet", "--collect",
 		"-p", "TimeoutStopSec=3s",
 		"--slice", SliceName(screen),
 		"--unit", UnitName(screen, role),
@@ -58,7 +60,25 @@ func run(args ...string) error {
 // StopUnit stops a unit; stopping a slice stops every scope under it.
 func StopUnit(unit string) error { return run("systemctl", "--user", "stop", unit) }
 
-// ResetFailed clears a failed unit so its name can be reused.
+// StopScreen stops a screen's units in an order its applications survive:
+// the applications first, so that they see their SIGTERM before their
+// compositor is gone, then the mirrors, then cage, then the slice itself.
+func StopScreen(screen string) {
+	units, _ := ListUnits("hyprcage-" + unitSafe(screen) + "-*")
+	for _, want := range []string{"-app-", "-mirror", "-cage"} {
+		for _, u := range units {
+			if strings.Contains(u, want) {
+				_ = StopUnit(u)
+			}
+		}
+	}
+	_ = StopUnit(SliceName(screen))
+	ResetFailed("hyprcage-" + unitSafe(screen) + "-*")
+	ResetFailed(SliceName(screen))
+}
+
+// ResetFailed clears failed units (a name or a glob) so their names can be
+// reused.
 func ResetFailed(unit string) { _ = run("systemctl", "--user", "reset-failed", unit) }
 
 // ScheduleOnce runs cmd once after the delay in a transient unit (M1, M2).

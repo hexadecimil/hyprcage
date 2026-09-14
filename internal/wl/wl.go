@@ -14,10 +14,16 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"os"
 	"sort"
 	"syscall"
 	"time"
 )
+
+// wlDebug traces every request and event on stderr when HYPRCAGE_WL_DEBUG is
+// set. There is no other way to see this wire protocol: WAYLAND_DEBUG is a
+// libwayland feature and this client does not use libwayland.
+var wlDebug = os.Getenv("HYPRCAGE_WL_DEBUG") != ""
 
 // ErrNotImplemented is returned by the stubs until the protocol code lands.
 var ErrNotImplemented = errors.New("wl: not implemented yet (spike S7)")
@@ -142,8 +148,14 @@ type Client struct {
 
 	handles map[uint32]*toplevelHandle
 
+	om *omState // wlr-output-management, bound on first SetMode
+
 	// heldMods are the modifier keys kept pressed by HoldModifiers.
 	heldMods []comboModifier
+
+	// wantInput records that this connection may drive input; the virtual
+	// devices are created on first use, not at connection time.
+	wantInput bool
 }
 
 // newClient wraps an already connected socket.
@@ -163,14 +175,25 @@ func newClient(fd int, display string) *Client {
 
 // Connect opens the Wayland socket named display (relative to
 // $XDG_RUNTIME_DIR, or an absolute path), fetches the registry and binds
-// what hyprcage needs.
+// what hyprcage needs, input devices included.
 func Connect(display string) (*Client, error) {
+	return connect(display, true)
+}
+
+// ConnectCapture connects for capture only: no virtual pointer, no virtual
+// keyboard, no seat. It is the mirror's connection, which must not be able
+// to inject anything into the screen.
+func ConnectCapture(display string) (*Client, error) {
+	return connect(display, false)
+}
+
+func connect(display string, input bool) (*Client, error) {
 	fd, err := dial(display)
 	if err != nil {
 		return nil, err
 	}
 	c := newClient(fd, display)
-	if err := c.setup(); err != nil {
+	if err := c.setup(input); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -200,45 +223,65 @@ func (c *Client) initRegistry() error {
 	return c.Roundtrip()
 }
 
-// setup runs the whole connection sequence: registry, binds, devices.
-func (c *Client) setup() error {
+// setup runs the whole connection sequence: registry, binds and, when
+// input is set, the virtual devices.
+func (c *Client) setup(input bool) error {
 	if err := c.initRegistry(); err != nil {
 		return err
 	}
 
 	c.shm, _ = c.bind(ifaceWlShm, nil)
-	c.seat, _ = c.bind(ifaceWlSeat, nil)
 	c.output, _ = c.bind(ifaceWlOutput, c.handleOutput)
-	c.vpMgr, c.vpMgrVer = c.bind(ifaceZwlrVirtualPointerManagerV1, nil)
-	c.vkMgr, _ = c.bind(ifaceZwpVirtualKeyboardManagerV1, nil)
 	c.scMgr, c.scMgrVer = c.bind(ifaceZwlrScreencopyManagerV1, nil)
-	c.ftMgr, _ = c.bind(ifaceZwlrForeignToplevelManagerV1, c.handleToplevelManager)
+	if input {
+		c.seat, _ = c.bind(ifaceWlSeat, nil)
+		c.vpMgr, c.vpMgrVer = c.bind(ifaceZwlrVirtualPointerManagerV1, nil)
+		c.vkMgr, _ = c.bind(ifaceZwpVirtualKeyboardManagerV1, nil)
+		c.ftMgr, _ = c.bind(ifaceZwlrForeignToplevelManagerV1, c.handleToplevelManager)
+	}
 
-	for _, want := range RequiredGlobals {
+	c.wantInput = input
+	required := RequiredGlobals
+	if !input {
+		required = []string{ifaceZwlrScreencopyManagerV1}
+	}
+	for _, want := range required {
 		if _, ok := c.findGlobal(want); !ok {
 			c.missing = append(c.missing, want)
 		}
 	}
 
 	// Second roundtrip: output mode, seat capabilities, initial toplevels.
-	if err := c.Roundtrip(); err != nil {
-		return err
-	}
+	// The virtual pointer and keyboard are created later, lazily, by
+	// ensureInput: on a headless cage the seat has no real devices, so the
+	// virtual ones are its only capabilities, and creating them here, before
+	// SetMode reconfigures the output, would make that reconfiguration drop
+	// them and flap the seat under every client.
+	return c.Roundtrip()
+}
 
-	if c.vpMgr != 0 && c.seat != 0 {
+// EnsureInput creates the virtual devices now rather than on first use, so
+// that the seat already has a keyboard and a pointer when an application
+// starts: an application that has to bind them mid-session can miss the
+// first key sent right after.
+func (c *Client) EnsureInput() error { return c.ensureInput() }
+
+// ensureInput creates the virtual pointer and keyboard on first use. The
+// pointer is not tied to an output: motion carries the geometry, and a
+// pointer bound to the output would die when SetMode changes it.
+func (c *Client) ensureInput() error {
+	if !c.wantInput {
+		return errors.New("wl: this connection was opened without input")
+	}
+	if c.pointer == 0 && c.vpMgr != 0 && c.seat != 0 {
 		c.pointer = c.allocID()
 		c.register(c.pointer, ifaceZwlrVirtualPointerV1, c.vpMgrVer, nil)
-		if c.vpMgrVer >= 2 {
-			c.send(c.vpMgr, reqZwlrVirtualPointerManagerV1CreateVirtualPointerWithOutput, c.seat, c.output, c.pointer)
-		} else {
-			c.send(c.vpMgr, reqZwlrVirtualPointerManagerV1CreateVirtualPointer, c.seat, c.pointer)
-		}
+		c.send(c.vpMgr, reqZwlrVirtualPointerManagerV1CreateVirtualPointer, c.seat, c.pointer)
 	}
-	if c.vkMgr != 0 && c.seat != 0 {
+	if c.keyboard == 0 && c.vkMgr != 0 && c.seat != 0 {
 		c.keyboard = c.allocID()
 		c.register(c.keyboard, ifaceZwpVirtualKeyboardV1, 1, nil)
 		c.send(c.vkMgr, reqZwpVirtualKeyboardManagerV1CreateVirtualKeyboard, c.seat, c.keyboard)
-		// The virtual keyboard refuses every key until a keymap is set.
 		if err := c.sendKeymap(newKeymap()); err != nil {
 			return err
 		}
@@ -314,6 +357,9 @@ func (c *Client) pointerErr() error {
 
 // Move warps the virtual pointer to absolute screen coordinates.
 func (c *Client) Move(x, y int) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.pointer == 0 {
 		return c.pointerErr()
 	}
@@ -330,6 +376,9 @@ func (c *Client) Move(x, y int) error {
 
 // PressButton presses or releases a pointer button at the current position.
 func (c *Client) PressButton(b Button, pressed bool) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.pointer == 0 {
 		return c.pointerErr()
 	}
@@ -355,6 +404,9 @@ func (c *Client) PressButton(b Button, pressed bool) error {
 
 // Scroll emits steps wheel clicks on an axis; positive is down or right.
 func (c *Client) Scroll(axis Axis, steps int) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.pointer == 0 {
 		return c.pointerErr()
 	}
@@ -617,6 +669,9 @@ func (c *Client) send(id uint32, op int, args ...any) {
 		return
 	}
 	m := &spec.Requests[op]
+	if wlDebug {
+		fmt.Fprintf(os.Stderr, "wl-> %s#%d.%s %v\n", obj.iface, id, m.Name, args)
+	}
 	buf, fds, err := encodeMessage(id, m, args)
 	if err != nil {
 		c.sendErr = err
@@ -776,6 +831,9 @@ func (c *Client) dispatch(id uint32, op int, body []byte) error {
 	args, err := decodeArgs(m.Args, body, &c.inFDs)
 	if err != nil {
 		return fmt.Errorf("wl: %s.%s: %w", obj.iface, m.Name, err)
+	}
+	if wlDebug {
+		fmt.Fprintf(os.Stderr, "wl<- %s#%d.%s %v\n", obj.iface, id, m.Name, args)
 	}
 	if obj.handler == nil {
 		return nil

@@ -24,7 +24,12 @@ type GCReport struct {
 	Errors    []string `json:"errors"`
 }
 
-var appSuffixRE = regexp.MustCompile(`-app-\d+(-\d+)?$`)
+// roleSuffixRE matches the unique suffix of the units that carry one, the
+// applications and the mirrors: hyprcage-<screen>-app-<pid>-<n>.scope and
+// hyprcage-<screen>-mirror-<pid>-<n>.scope. Leaving it out would make gc
+// read the whole suffix as part of the screen name, find no record under
+// that name, and stop a unit that is doing its job.
+var roleSuffixRE = regexp.MustCompile(`-(app|mirror)-\d+(-\d+)?$`)
 
 // GC implements cahier §5.3 M4: screens of dead sessions, then units and
 // outputs that have no record.
@@ -46,7 +51,7 @@ func GC(c *Ctx, opts GCOptions) (GCReport, error) {
 		hb, _ := registry.Heartbeat(rec.Name)
 		dead := !session.IsAlive(rec.Owner, hb, c.Cfg.SessionGrace)
 		// A screen whose cage crashed is useless whoever owns it: reap it too.
-		cageDead := rec.State == "ready" && rec.CagePID > 0 && !session.PIDAlive(rec.CagePID, 0)
+		cageDead := rec.State == "ready" && rec.CagePID > 0 && !Alive(rec)
 		if opts.All || (opts.Session != "" && rec.Owner.SessionID == opts.Session) || dead || cageDead {
 			if err := Destroy(c, rec); err != nil {
 				rep.Errors = append(rep.Errors, rec.Name+": "+err.Error())
@@ -64,16 +69,21 @@ func GC(c *Ctx, opts GCOptions) (GCReport, error) {
 				continue
 			}
 			_ = sysd.StopUnit(u)
+			sysd.ResetFailed(u)
 			rep.Orphans = append(rep.Orphans, u)
 		}
 	}
-	if mons, err := c.Hypr.Monitors(); err == nil {
-		for _, m := range mons {
-			if !strings.HasPrefix(m.Name, c.Cfg.OutputPrefix) || known[m.Name] {
-				continue
-			}
-			if err := removeOutputRestoring(c, m.Name); err == nil {
-				rep.Orphans = append(rep.Orphans, "output "+m.Name)
+	// Legacy: outputs of screens made by a hyprcage before 0.3, which were
+	// Hyprland's, left behind by a record that is gone.
+	if c.Hypr != nil {
+		if mons, err := c.Hypr.Monitors(); err == nil {
+			for _, m := range mons {
+				if !strings.HasPrefix(m.Name, c.Cfg.OutputPrefix) || known[m.Name] {
+					continue
+				}
+				if err := removeOutputRestoring(c, m.Name); err == nil {
+					rep.Orphans = append(rep.Orphans, "output "+m.Name)
+				}
 			}
 		}
 	}
@@ -94,7 +104,7 @@ func orphanScreenName(unit string) string {
 	if strings.HasPrefix(base, "gc-") {
 		return sysd.ScreenFromUnit(strings.TrimPrefix(base, "gc-"))
 	}
-	base = appSuffixRE.ReplaceAllString(base, "")
+	base = roleSuffixRE.ReplaceAllString(base, "")
 	base = strings.TrimSuffix(base, "-cage")
 	base = strings.TrimSuffix(base, "-mirror")
 	return sysd.ScreenFromUnit(base)

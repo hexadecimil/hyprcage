@@ -10,17 +10,80 @@ import (
 // The virtual keyboard needs a keymap before any key event. hyprcage builds
 // one itself (the wtype method): one keycode per distinct keysym, which makes
 // typing independent of the human's layout and covers the whole of Unicode.
+//
+// Which physical key carries a keysym matters to Chromium and Electron: they
+// derive the DOM keyCode of anything that is not an ASCII letter or digit
+// from the physical key, and a key whose keyCode says Escape, BackSpace, Tab
+// or Enter is acted on as such, not inserted. So a keysym is put on the key
+// that carries it in the US layout when there is one ("/" on Slash), and
+// otherwise on a key that is printable there, never on a control key.
 
-// Fixed keycodes of the four modifier keys, always present in the keymap.
+// Fixed keycodes of the four modifier keys, always present in the keymap:
+// their US positions.
 const (
-	kcControl = 37
-	kcShift   = 50
-	kcAlt     = 64
-	kcSuper   = 133
+	kcControl = 8 + 29  // KEY_LEFTCTRL
+	kcShift   = 8 + 42  // KEY_LEFTSHIFT
+	kcAlt     = 8 + 56  // KEY_LEFTALT
+	kcSuper   = 8 + 125 // KEY_LEFTMETA
 )
 
-// maxKeysyms is the number of distinct keysyms one generated keymap holds.
-const maxKeysyms = 200
+// printableKeys are the evdev codes of the keys that are printable in the US
+// layout, the pool a keysym without a key of its own is drawn from. Space is
+// left out: a keyCode of 32 activates buttons and scrolls pages.
+var printableKeys = []int{
+	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, // q..p
+	30, 31, 32, 33, 34, 35, 36, 37, 38, // a..l
+	44, 45, 46, 47, 48, 49, 50, // z..m
+	2, 3, 4, 5, 6, 7, 8, 9, 10, 11, // 1..0
+	12, 13, 26, 27, 39, 40, 41, 43, 51, 52, 53, // - = [ ] ; ' ` \ , . /
+	86,                                     // the 102nd key of ISO keyboards
+	71, 72, 73, 75, 76, 77, 79, 80, 81, 82, // keypad 7 8 9 4 5 6 1 2 3 0
+	83, 55, 74, 78, 98, // keypad . * - + /
+}
+
+// maxKeysyms is the number of distinct keysyms one generated keymap holds:
+// the whole pool.
+var maxKeysyms = len(printableKeys)
+
+// usKey is the evdev code of the key that carries a keysym in the US layout,
+// for the keysyms that have one: ASCII, and the names Key accepts.
+var usKey = func() map[string]int {
+	m := map[string]int{}
+	rows := []struct {
+		plain, shifted string
+		first          int
+	}{
+		{"1234567890-=", "!@#$%^&*()_+", 2},
+		{"qwertyuiop[]", "QWERTYUIOP{}", 16},
+		{"asdfghjkl;'`", "ASDFGHJKL:\"~", 30},
+		{"\\zxcvbnm,./", "|ZXCVBNM<>?", 43},
+	}
+	for _, r := range rows {
+		for i, ch := range r.plain {
+			m[keysymForRune(ch)] = r.first + i
+		}
+		for i, ch := range r.shifted {
+			m[keysymForRune(ch)] = r.first + i
+		}
+	}
+	m[keysymForRune(' ')] = 57
+	for name, code := range map[string]int{
+		"Return": 28, "Escape": 1, "Tab": 15, "BackSpace": 14, "Delete": 111, "Insert": 110,
+		"Home": 102, "End": 107, "Page_Up": 104, "Page_Down": 109,
+		"Left": 105, "Right": 106, "Up": 103, "Down": 108,
+		"F1": 59, "F2": 60, "F3": 61, "F4": 62, "F5": 63, "F6": 64, "F7": 65, "F8": 66, "F9": 67, "F10": 68,
+		"F11": 87, "F12": 88, "F13": 183, "F14": 184, "F15": 185, "F16": 186, "F17": 187, "F18": 188,
+		"F19": 189, "F20": 190, "F21": 191, "F22": 192, "F23": 193, "F24": 194,
+		"space": 57, "plus": 13, "minus": 12, "comma": 51, "period": 52, "slash": 53, "semicolon": 39,
+		"apostrophe": 40, "bracketleft": 26, "bracketright": 27, "backslash": 43, "grave": 41, "equal": 13,
+		"Menu": 127, "Print": 99, "Pause": 119, "Caps_Lock": 58, "Num_Lock": 69,
+		"KP_Enter": 96, "KP_0": 82, "KP_1": 79, "KP_2": 80, "KP_3": 81, "KP_4": 75,
+		"KP_5": 76, "KP_6": 77, "KP_7": 71, "KP_8": 72, "KP_9": 73,
+	} {
+		m[name] = code
+	}
+	return m
+}()
 
 // keyDelay separates a press from its release, and one key from the next.
 const keyDelay = 4 * time.Millisecond
@@ -36,58 +99,55 @@ const (
 // keymapFormatXKBV1 is wl_keyboard.keymap_format.xkb_v1.
 const keymapFormatXKBV1 = 1
 
-func reservedKeycode(kc int) bool {
-	return kc == kcControl || kc == kcShift || kc == kcAlt || kc == kcSuper
-}
-
-// keycodeForSlot returns the xkb keycode of the slot-th (1 based) generated
-// key: keycodes start at 9 and skip the four modifier keycodes.
-func keycodeForSlot(slot int) int {
-	n := 0
-	for kc := 9; kc <= 255; kc++ {
-		if reservedKeycode(kc) {
-			continue
-		}
-		n++
-		if n == slot {
-			return kc
-		}
-	}
-	return 0
-}
-
-// keymap is a generated xkb keymap: an ordered set of keysym names.
+// keymap is a generated xkb keymap: an ordered set of keysym names, each on
+// its own key.
 type keymap struct {
 	order []string
+	codes []int          // evdev code of each keysym, parallel to order
 	index map[string]int // keysym name -> 1 based slot
+	taken map[int]bool   // evdev codes in use
 }
 
 func newKeymap() *keymap {
-	return &keymap{index: make(map[string]int)}
+	return &keymap{index: make(map[string]int), taken: make(map[int]bool)}
 }
 
-// add reserves a slot for a keysym, returning its slot and false when the
-// keymap is full.
+// add gives a keysym a key, returning its slot and false when no key is
+// left. The keysym's own US key when it has one and it is free, else the
+// first free key of the printable pool.
 func (k *keymap) add(sym string) (int, bool) {
 	if slot, ok := k.index[sym]; ok {
 		return slot, true
 	}
-	if len(k.order) >= maxKeysyms {
-		return 0, false
+	code := usKey[sym]
+	if code == 0 || k.taken[code] {
+		code = 0
+		for _, c := range printableKeys {
+			if !k.taken[c] {
+				code = c
+				break
+			}
+		}
+		if code == 0 {
+			return 0, false
+		}
 	}
+	k.taken[code] = true
 	k.order = append(k.order, sym)
+	k.codes = append(k.codes, code)
 	slot := len(k.order)
 	k.index[sym] = slot
 	return slot, true
 }
 
-// keycode returns the xkb keycode of a keysym already in the keymap.
+// keycode returns the xkb keycode (evdev code + 8) of a keysym already in
+// the keymap.
 func (k *keymap) keycode(sym string) int {
 	slot, ok := k.index[sym]
 	if !ok {
 		return 0
 	}
-	return keycodeForSlot(slot)
+	return k.codes[slot-1] + 8
 }
 
 // render writes the keymap in the xkb text format.
@@ -98,7 +158,7 @@ func (k *keymap) render() string {
 	b.WriteString("minimum = 8;\n")
 	b.WriteString("maximum = 255;\n")
 	for i := range k.order {
-		fmt.Fprintf(&b, "<K%d> = %d;\n", i+1, keycodeForSlot(i+1))
+		fmt.Fprintf(&b, "<K%d> = %d;\n", i+1, k.codes[i]+8)
 	}
 	fmt.Fprintf(&b, "<LCTL> = %d;\n", kcControl)
 	fmt.Fprintf(&b, "<LFSH> = %d;\n", kcShift)
@@ -184,6 +244,9 @@ func keysymForRune(r rune) string {
 
 // Type types arbitrary Unicode text through the virtual keyboard.
 func (c *Client) Type(text string) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.keyboard == 0 {
 		return c.keyboardErr()
 	}
@@ -193,11 +256,11 @@ func (c *Client) Type(text string) error {
 		codes := make([]int, 0, maxKeysyms)
 		j := i
 		for ; j < len(runes); j++ {
-			slot, ok := km.add(keysymForRune(runes[j]))
-			if !ok {
+			sym := keysymForRune(runes[j])
+			if _, ok := km.add(sym); !ok {
 				break
 			}
-			codes = append(codes, keycodeForSlot(slot))
+			codes = append(codes, km.keycode(sym))
 		}
 		if err := c.sendKeymap(km); err != nil {
 			return err
@@ -293,6 +356,9 @@ func keysymForToken(tok string) (string, error) {
 
 // Key presses and releases a combination such as "ctrl+l" or "Return".
 func (c *Client) Key(combo string) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.keyboard == 0 {
 		return c.keyboardErr()
 	}

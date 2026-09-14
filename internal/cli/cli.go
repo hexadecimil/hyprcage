@@ -54,16 +54,18 @@ func init() {
 		{"windows", "list the windows of a screen", runWindows, false},
 		{"close", "ask a window to close", runClose, false},
 		{"destroy", "close a screen", runDestroy, false},
+		{"mirror", "open or close the human's mirror window for a screen", runMirrorOpen, false},
 		{"list", "list screens", runList, false},
 		{"gc", "close screens of dead sessions and orphans", runGC, false},
 		{"doctor", "check dependencies and Hyprland", runDoctor, false},
-		{"setup", "install cage and wl-mirror (asks for your password)", runSetup, false},
+		{"config", "write the configuration file with the defaults, unless it exists", runConfig, false},
+		{"setup", "install cage (asks for your password)", runSetup, false},
 		{"mcp", "run the MCP server on stdio", runMCP, false},
 		{"version", "print the version", runVersion, false},
 		{"session-start", "Claude Code SessionStart hook", runSessionStart, true},
 		{"session-end", "Claude Code SessionEnd hook", runSessionEnd, true},
 		{"_holder", "internal: keeps cage alive and publishes its socket", runHolder, true},
-		{"_watch", "internal: re-applies a screen's geometry after a config reload", runWatch, true},
+		{"_mirror", "internal: shows a screen in a window on the human's compositor", runMirror, true},
 	}
 }
 

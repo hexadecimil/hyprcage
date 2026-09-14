@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hexadecimil/hyprcage/internal/hypr"
+	"github.com/hexadecimil/hyprcage/internal/config"
 	"github.com/hexadecimil/hyprcage/internal/registry"
 	"github.com/hexadecimil/hyprcage/internal/session"
 )
@@ -36,31 +36,19 @@ func TestNewName(t *testing.T) {
 
 func TestOrphanScreenName(t *testing.T) {
 	cases := map[string]string{
-		"hyprcage-hc_1a2b3c.slice":            "hc-1a2b3c",
-		"hyprcage-hc_1a2b3c-cage.scope":       "hc-1a2b3c",
-		"hyprcage-hc_1a2b3c-mirror.scope":     "hc-1a2b3c",
-		"hyprcage-hc_1a2b3c-app-4242-7.scope": "hc-1a2b3c",
-		"hyprcage-gc-hc_1a2b3c.timer":         "hc-1a2b3c",
-		"hyprcage-gc-hc_1a2b3c.service":       "hc-1a2b3c",
-		"app-Hyprland-firefox-1.scope":        "",
+		"hyprcage-hc_1a2b3c.slice":               "hc-1a2b3c",
+		"hyprcage-hc_1a2b3c-cage.scope":          "hc-1a2b3c",
+		"hyprcage-hc_1a2b3c-mirror.scope":        "hc-1a2b3c",
+		"hyprcage-hc_1a2b3c-app-4242-7.scope":    "hc-1a2b3c",
+		"hyprcage-hc_1a2b3c-mirror-4242-1.scope": "hc-1a2b3c",
+		"hyprcage-gc-hc_1a2b3c.timer":            "hc-1a2b3c",
+		"hyprcage-gc-hc_1a2b3c.service":          "hc-1a2b3c",
+		"app-Hyprland-firefox-1.scope":           "",
 	}
 	for in, want := range cases {
 		if got := orphanScreenName(in); got != want {
 			t.Errorf("orphanScreenName(%q) = %q, want %q", in, got, want)
 		}
-	}
-}
-
-func TestFarPosition(t *testing.T) {
-	mons := []hypr.Monitor{{Name: "eDP-1", X: 0, Width: 1920}, {Name: "HDMI-A-1", X: 1920, Width: 1920}}
-	x, y := farPosition(mons, 1280)
-	if x != -farGap-1280 || y != 0 {
-		t.Errorf("farPosition = %d,%d", x, y)
-	}
-	// A monitor already at a negative x pushes the output further left.
-	mons = append(mons, hypr.Monitor{Name: "hc-a", X: -farGap - 1280, Width: 1280})
-	if x, _ := farPosition(mons, 1280); x != -2*farGap-2*1280 {
-		t.Errorf("second farPosition = %d", x)
 	}
 }
 
@@ -140,6 +128,45 @@ func TestMirrorWanted(t *testing.T) {
 	for _, c := range cases {
 		if got := mirrorWanted(c.want, c.configured); got != c.result {
 			t.Errorf("mirrorWanted(%v, %v) = %v, want %v", c.want, c.configured, got, c.result)
+		}
+	}
+}
+
+func TestPickWorkspace(t *testing.T) {
+	a := registry.Owner{SessionID: "a"}
+	b := registry.Owner{SessionID: "b"}
+	live := func(ws int, o registry.Owner) slot { return slot{ws, o, true} }
+	base := config.Default() // [6, 9], four per workspace
+	group := func(g string) config.Config { c := base; c.MirrorGroup = g; return c }
+	cases := []struct {
+		name     string
+		cfg      config.Config
+		owner    registry.Owner
+		occupied []int
+		slots    []slot
+		want     int
+	}{
+		{"empty range takes the first", group("session"), a, nil, nil, 6},
+		{"human's window blocks a workspace", group("session"), a, []int{6}, nil, 7},
+		{"session joins its own", group("session"), a, nil, []slot{live(7, a)}, 7},
+		{"session avoids another's", group("session"), b, nil, []slot{live(6, a)}, 7},
+		{"session overflows when full", group("session"), a, nil,
+			[]slot{live(6, a), live(6, a), live(6, a), live(6, a)}, 7},
+		{"dead screen frees its seat but not its workspace", group("session"), b, nil,
+			[]slot{{6, a, false}}, 7},
+		{"pack joins anyone", group("pack"), b, nil, []slot{live(6, a)}, 6},
+		{"pack fills the lowest first", group("pack"), b, nil,
+			[]slot{live(6, a), live(7, a)}, 6},
+		{"pack moves on when full", group("pack"), b, nil,
+			[]slot{live(6, a), live(6, a), live(6, b), live(6, b)}, 7},
+		{"pack fills a gap left by a closed screen", group("pack"), b, nil,
+			[]slot{live(6, a), live(6, a), live(6, a), live(7, b)}, 6},
+		{"screen never joins", group("screen"), a, nil, []slot{live(6, a)}, 7},
+		{"nothing left", group("screen"), a, []int{6, 7}, []slot{live(8, a), live(9, b)}, 0},
+	}
+	for _, tc := range cases {
+		if got := pickWorkspace(tc.cfg, tc.owner, tc.occupied, tc.slots); got != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.name, got, tc.want)
 		}
 	}
 }

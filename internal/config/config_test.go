@@ -28,8 +28,11 @@ mirror = false
 notify = false
 
 [workspaces]
-agent = [20, 30]
 mirror = [7, 8]
+
+[mirror]
+group = "Screen"
+per_workspace = 2
 
 [lifecycle]
 safety_timer = "30m"
@@ -53,10 +56,11 @@ renderer = "Pixman"
 	want.MaxWidth, want.MaxHeight = 2560, 1440
 	want.MaxPerSession = 2
 	want.MirrorEnabled, want.Notify = false, false
-	want.WorkspaceMin, want.WorkspaceMax = 20, 30
 	want.MirrorMin, want.MirrorMax = 7, 8
 	want.SafetyTimer = 30 * time.Minute
 	want.Renderer = "pixman"
+	want.MirrorGroup = "screen"
+	want.MirrorPerWorkspace = 2
 	if cfg != want {
 		t.Errorf("got  %+v\nwant %+v", cfg, want)
 	}
@@ -68,11 +72,13 @@ func TestApplyRejects(t *testing.T) {
 		`[screen]` + "\n" + `width = 100`:              "below 320x240",
 		`[screen]` + "\n" + `max_width = 800`:          "below the default size",
 		`[screen]` + "\n" + `max_per_session = -1`:     "negative",
-		`[workspaces]` + "\n" + `agent = [5]`:          "expected [min, max]",
-		`[workspaces]` + "\n" + `agent = [0, 9]`:       ">= 1",
-		`[workspaces]` + "\n" + `agent = [30, 20]`:     ">= 1",
-		`[workspaces]` + "\n" + `agent = [6, 20]`:      "overlap",
-		`[workspaces]` + "\n" + `mirror = [11, 12]`:    "overlap",
+		`[workspaces]` + "\n" + `agent = [11, 99]`:     "unknown key",
+		`[workspaces]` + "\n" + `mirror = [5]`:         "expected [min, max]",
+		`[workspaces]` + "\n" + `mirror = [0, 9]`:      ">= 1",
+		`[workspaces]` + "\n" + `mirror = [9, 6]`:      ">= 1",
+		`[mirror]` + "\n" + `fps = 0`:                  "between 1 and 240",
+		`[mirror]` + "\n" + `group = "human"`:          "not session, pack or screen",
+		`[mirror]` + "\n" + `per_workspace = 0`:        "below 1",
 		`[lifecycle]` + "\n" + `safety_timer = "soon"`: "safety_timer",
 		`[lifecycle]` + "\n" + `safety_timer = "10s"`:  "below 1m",
 		`[cage]` + "\n" + `renderer = "vulkan"`:        "not auto, gles or pixman",
@@ -99,5 +105,33 @@ func TestPathHonoursXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	if got := Path(); !strings.HasSuffix(got, "/.config/hyprcage/config.toml") {
 		t.Errorf("Path() = %s", got)
+	}
+}
+
+func TestTemplateIsTheDefaults(t *testing.T) {
+	cfg := Default()
+	if err := Apply(&cfg, Template); err != nil {
+		t.Fatal(err)
+	}
+	if cfg != Default() {
+		t.Errorf("the template changes a default:\ngot  %+v\nwant %+v", cfg, Default())
+	}
+}
+
+func TestWriteDefault(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, written, err := WriteDefault()
+	if err != nil || !written || path != Path() {
+		t.Fatalf("first write: path=%s written=%v err=%v", path, written, err)
+	}
+	if err := os.WriteFile(path, []byte("[screen]\nwidth = 1024\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, written, err := WriteDefault(); err != nil || written {
+		t.Fatalf("second write: written=%v err=%v", written, err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil || cfg.DefaultWidth != 1024 {
+		t.Errorf("the existing file was touched: width=%d err=%v", cfg.DefaultWidth, err)
 	}
 }

@@ -12,6 +12,9 @@ import (
 // of every generated keymap, including the initial one, so no keymap upload
 // is needed here.
 func (c *Client) HoldModifiers(mods []string) error {
+	if err := c.ensureInput(); err != nil {
+		return err
+	}
 	if c.keyboard == 0 {
 		return c.keyboardErr()
 	}

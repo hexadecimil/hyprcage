@@ -40,7 +40,7 @@ container, and give it hyprcage inside.
   `SHA256SUMS` published with the same release. That protects against
   corruption and against a tampered download, not against a compromised
   GitHub account. Signed releases are planned.
-- Root is used for one thing: `pacman -S cage wl-mirror`, through `sudo`
+- Root is used for one thing: `pacman -S cage`, through `sudo`
   when a terminal is there or through `pkexec`, which opens your desktop's
   own authentication dialog. Nothing else runs as root, and `hyprcage setup`
   prints the exact command if you prefer to run it yourself.

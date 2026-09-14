@@ -26,26 +26,36 @@ type Owner struct {
 
 // Screen is the record of one agent screen. Its file mtime is the heartbeat.
 type Screen struct {
-	Name            string    `json:"name"`
-	CreatedAt       time.Time `json:"created_at"`
-	State           string    `json:"state"` // starting, ready
-	Width           int       `json:"width"`
-	Height          int       `json:"height"`
-	PosX            int       `json:"pos_x"`
-	PosY            int       `json:"pos_y"`
-	WorkspaceApp    int       `json:"ws_app"`
-	WorkspaceMirror int       `json:"ws_mirror"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	State     string    `json:"state"` // starting, ready
+	// Version is the record format: 3 for a screen with its own headless
+	// output (cage on wlroots' headless backend). A record without one was
+	// written by a 0.1 or 0.2 hyprcage, whose screens were Hyprland outputs,
+	// and is torn down the old way.
+	Version int `json:"version,omitempty"`
+	Width   int `json:"width"`
+	Height  int `json:"height"`
+	// WorkspaceApp only exists on legacy records: the Hyprland workspace
+	// pinned to the screen's output.
+	WorkspaceApp    int `json:"ws_app,omitempty"`
+	WorkspaceMirror int `json:"ws_mirror"`
 	// MirrorNote says why there is no mirror window when ws_mirror is 0,
 	// so that an absent mirror is never something to go and investigate.
-	MirrorNote string `json:"mirror_note,omitempty"`
-	Slice           string    `json:"slice"`
-	InnerDisplay    string    `json:"inner_display"`
-	InnerX11        string    `json:"inner_x11,omitempty"`
-	CagePID         int       `json:"cage_pid,omitempty"`
-	// Reserved is the area a desktop bar takes on the output (left, top,
-	// right, bottom); the output is declared enlarged by it.
-	Reserved [4]int `json:"reserved,omitempty"`
-	Owner    Owner  `json:"owner"`
+	MirrorNote   string `json:"mirror_note,omitempty"`
+	Slice        string `json:"slice"`
+	InnerDisplay string `json:"inner_display"`
+	InnerX11     string `json:"inner_x11,omitempty"`
+	CagePID      int    `json:"cage_pid,omitempty"`
+	// CagePIDStart is cage's process start time, so that a reused pid is
+	// never mistaken for the cage that died.
+	CagePIDStart uint64 `json:"cage_pid_start,omitempty"`
+	// RenderDevice is the DRM render node cage renders on, and Renderer the
+	// wlroots renderer it runs (gles2 or pixman).
+	RenderDevice   string `json:"render_device,omitempty"`
+	RenderDeviceBy string `json:"render_device_by,omitempty"` // how it was chosen
+	Renderer       string `json:"renderer,omitempty"`
+	Owner          Owner  `json:"owner"`
 }
 
 // Dir is the registry directory.

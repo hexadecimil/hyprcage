@@ -28,6 +28,18 @@ type frameState struct {
 	failed                        bool
 }
 
+// OpaqueFormat is the alpha-less twin of a wl_shm format, the format itself
+// when it has none: same bytes, alpha ignored by the compositor.
+func OpaqueFormat(format uint32) uint32 {
+	switch format {
+	case shmFormatARGB8888:
+		return shmFormatXRGB8888
+	case fourccABGR8888:
+		return fourccXBGR8888
+	}
+	return format
+}
+
 func (s *frameState) handle(op int, args []any) error {
 	switch op {
 	case evtZwlrScreencopyFrameV1Buffer:

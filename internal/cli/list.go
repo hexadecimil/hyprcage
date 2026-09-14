@@ -49,8 +49,8 @@ func runList(e *Env) int {
 		return ExitOK
 	}
 	for _, r := range rows {
-		fmt.Fprintf(e.Stdout, "%-12s %dx%d  ws=%d  mirror=%d  state=%s  owner=%s/%d  alive=%v  mine=%v\n",
-			r.Name, r.Width, r.Height, r.WorkspaceApp, r.WorkspaceMirror, r.State, r.Owner.Client, r.Owner.PID, r.Alive, r.Mine)
+		fmt.Fprintf(e.Stdout, "%-12s %dx%d  mirror=%d  state=%s  owner=%s/%d  alive=%v  mine=%v\n",
+			r.Name, r.Width, r.Height, r.WorkspaceMirror, r.State, r.Owner.Client, r.Owner.PID, r.Alive, r.Mine)
 	}
 	return ExitOK
 }

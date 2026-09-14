@@ -55,6 +55,14 @@ type fakeServer struct {
 	width  int
 	height int
 
+	// wlr-output-management: the bound wl_output, the mode the client asked
+	// for, and whether apply must answer failed.
+	outputID   uint32
+	askedW     int32
+	askedH     int32
+	askedScale int32
+	refuseMode bool
+
 	stopped chan struct{}
 }
 
@@ -231,6 +239,21 @@ func (s *fakeServer) handle(id uint32, op int, body []byte, fds *[]int) {
 		s.event(id, ifaceZwlrScreencopyFrameV1, "flags", uint32(frameFlagYInvert))
 		s.event(id, ifaceZwlrScreencopyFrameV1, "ready", uint32(0), uint32(0), uint32(0))
 
+	case "zwlr_output_configuration_head_v1.set_custom_mode":
+		s.askedW, s.askedH = args[0].(int32), args[1].(int32)
+
+	case "zwlr_output_configuration_head_v1.set_scale":
+		s.askedScale = int32(args[0].(fixed))
+
+	case "zwlr_output_configuration_v1.apply":
+		if s.refuseMode {
+			s.event(id, ifaceZwlrOutputConfigurationV1, "failed")
+			return
+		}
+		s.event(id, ifaceZwlrOutputConfigurationV1, "succeeded")
+		s.event(s.outputID, ifaceWlOutput, "mode", uint32(0x1), s.askedW, s.askedH, int32(60000))
+		s.event(s.outputID, ifaceWlOutput, "done")
+
 	case "zwp_virtual_keyboard_v1.keymap":
 		fd := args[1].(int)
 		size := args[2].(uint32)
@@ -257,7 +280,21 @@ func (s *fakeServer) handle(id uint32, op int, body []byte, fds *[]int) {
 // onBind sends the events a freshly bound global would send.
 func (s *fakeServer) onBind(nid newIDAny) {
 	switch nid.Interface {
+	case ifaceZwlrOutputManagerV1:
+		h := s.newServerID()
+		s.objects[h] = ifaceZwlrOutputHeadV1
+		s.event(nid.ID, ifaceZwlrOutputManagerV1, "head", h)
+		s.event(h, ifaceZwlrOutputHeadV1, "name", "HEADLESS-1")
+		m := s.newServerID()
+		s.objects[m] = ifaceZwlrOutputModeV1
+		s.event(h, ifaceZwlrOutputHeadV1, "mode", m)
+		s.event(m, ifaceZwlrOutputModeV1, "size", int32(1280), int32(720))
+		s.event(m, ifaceZwlrOutputModeV1, "refresh", int32(60000))
+		s.event(h, ifaceZwlrOutputHeadV1, "enabled", int32(1))
+		s.event(h, ifaceZwlrOutputHeadV1, "current_mode", m)
+		s.event(nid.ID, ifaceZwlrOutputManagerV1, "done", uint32(7))
 	case ifaceWlOutput:
+		s.outputID = nid.ID
 		s.event(nid.ID, ifaceWlOutput, "mode", uint32(0x1), int32(1280), int32(800), int32(60000))
 		s.event(nid.ID, ifaceWlOutput, "scale", int32(1))
 		s.event(nid.ID, ifaceWlOutput, "done")
@@ -326,6 +363,7 @@ func fullGlobals() []Global {
 		{Name: 5, Interface: ifaceZwpVirtualKeyboardManagerV1, Version: 1},
 		{Name: 6, Interface: ifaceZwlrScreencopyManagerV1, Version: 3},
 		{Name: 7, Interface: ifaceZwlrForeignToplevelManagerV1, Version: 3},
+		{Name: 8, Interface: ifaceZwlrOutputManagerV1, Version: 4},
 	}
 }
 
@@ -356,7 +394,7 @@ func startFake(t *testing.T, globals []Global) (*Client, *fakeServer) {
 	go s.serve()
 
 	c := newClient(pair[0], "fake")
-	if err := c.setup(); err != nil {
+	if err := c.setup(true); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	t.Cleanup(func() {
@@ -420,8 +458,8 @@ func TestConnectBindsAndReportsOutput(t *testing.T) {
 	if got := c.Missing(); len(got) != 0 {
 		t.Errorf("Missing() = %v, want none", got)
 	}
-	if len(c.Globals()) != 7 {
-		t.Errorf("Globals() = %d entries, want 7", len(c.Globals()))
+	if len(c.Globals()) != 8 {
+		t.Errorf("Globals() = %d entries, want 8", len(c.Globals()))
 	}
 	w, h, err := c.OutputSize()
 	if err != nil {
@@ -432,14 +470,21 @@ func TestConnectBindsAndReportsOutput(t *testing.T) {
 	}
 
 	recs := s.log()
+	// The output manager and the virtual devices are created on demand, not
+	// at connection time (a headless cage would drop devices made before the
+	// mode is set), so only the globals are bound now.
 	if n := len(requestsNamed(recs, "wl_registry.bind")); n != 7 {
 		t.Errorf("bound %d globals, want 7", n)
 	}
-	// The manager is version 2, so the output aware constructor is used.
-	onlyRequest(t, recs, "zwlr_virtual_pointer_manager_v1.create_virtual_pointer_with_output")
+	// The first input use creates the devices, the pointer without an output.
+	if err := c.Move(0, 0); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	recs = s.log()
+	onlyRequest(t, recs, "zwlr_virtual_pointer_manager_v1.create_virtual_pointer")
 	onlyRequest(t, recs, "zwp_virtual_keyboard_manager_v1.create_virtual_keyboard")
 	if s.keymapCount() != 1 {
-		t.Errorf("connection uploaded %d keymaps, want 1", s.keymapCount())
+		t.Errorf("first input use uploaded %d keymaps, want 1", s.keymapCount())
 	}
 }
 
@@ -573,6 +618,9 @@ func TestTypeText(t *testing.T) {
 
 func TestTypeChunksLongText(t *testing.T) {
 	c, s := startFake(t, fullGlobals())
+	if err := c.Move(0, 0); err != nil { // create the devices and upload the initial keymap
+		t.Fatal(err)
+	}
 	s.reset()
 	before := s.keymapCount()
 	var sb strings.Builder
@@ -582,8 +630,8 @@ func TestTypeChunksLongText(t *testing.T) {
 	if err := c.Type(sb.String()); err != nil {
 		t.Fatalf("Type: %v", err)
 	}
-	if got := s.keymapCount() - before; got != 2 {
-		t.Errorf("%d keymaps uploaded for 250 distinct keysyms, want 2", got)
+	if want := (250 + maxKeysyms - 1) / maxKeysyms; s.keymapCount()-before != want {
+		t.Errorf("%d keymaps uploaded for 250 distinct keysyms, want %d", s.keymapCount()-before, want)
 	}
 	if n := len(requestsNamed(s.log(), "zwp_virtual_keyboard_v1.key")); n != 500 {
 		t.Errorf("%d key requests, want 500", n)
@@ -758,14 +806,13 @@ func TestMissingScreencopy(t *testing.T) {
 	if !strings.Contains(err.Error(), ifaceZwlrScreencopyManagerV1) {
 		t.Errorf("error %q does not name the interface", err)
 	}
-	// A version 1 manager uses the plain constructor.
+	// Input still works, and creates the pointer with the plain constructor.
+	if err := c.Move(3, 4); err != nil {
+		t.Errorf("Move: %v", err)
+	}
 	onlyRequest(t, s.log(), "zwlr_virtual_pointer_manager_v1.create_virtual_pointer")
 	if n := len(requestsNamed(s.log(), "zwlr_virtual_pointer_manager_v1.create_virtual_pointer_with_output")); n != 0 {
 		t.Errorf("a version 1 manager must not get create_virtual_pointer_with_output")
-	}
-	// Input still works.
-	if err := c.Move(3, 4); err != nil {
-		t.Errorf("Move: %v", err)
 	}
 }
 
@@ -818,5 +865,127 @@ func TestProbeLive(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("wl_compositor is not advertised")
+	}
+}
+
+func TestSetMode(t *testing.T) {
+	c, s := startFake(t, fullGlobals())
+	if err := c.SetMode(1920, 1200, 60, 2); err != nil {
+		t.Fatalf("SetMode: %v", err)
+	}
+	if err := c.Roundtrip(); err != nil { // the fake logs the destroy on its own goroutine
+		t.Fatal(err)
+	}
+	recs := s.log()
+	cfg := onlyRequest(t, recs, "zwlr_output_manager_v1.create_configuration")
+	if got := cfg.args[1].(uint32); got != 7 {
+		t.Errorf("configuration created with serial %d, want the manager's 7", got)
+	}
+	mode := onlyRequest(t, recs, "zwlr_output_configuration_head_v1.set_custom_mode")
+	if mode.args[0].(int32) != 1920 || mode.args[1].(int32) != 1200 || mode.args[2].(int32) != 60000 {
+		t.Errorf("set_custom_mode args %v", mode.args)
+	}
+	if sc := onlyRequest(t, recs, "zwlr_output_configuration_head_v1.set_scale"); int32(sc.args[0].(fixed)) != 512 {
+		t.Errorf("set_scale = %v, want 2.0 as fixed 512", sc.args[0])
+	}
+	if i := indexOf(recs, "zwlr_output_configuration_v1.apply"); i < 0 || i < indexOf(recs, "zwlr_output_configuration_head_v1.set_scale") {
+		t.Error("apply must come after the head is configured")
+	}
+	if indexOf(recs, "zwlr_output_configuration_v1.destroy") < 0 {
+		t.Error("the configuration must be destroyed once answered")
+	}
+	// The wl_output scale event did not change in the fake (still 1), so the
+	// logical size equals the mode.
+	if w, h, err := c.OutputSize(); err != nil || w != 1920 || h != 1200 {
+		t.Errorf("OutputSize after SetMode = %dx%d, %v", w, h, err)
+	}
+}
+
+func TestSetModeRefused(t *testing.T) {
+	c, s := startFake(t, fullGlobals())
+	s.refuseMode = true
+	if err := c.SetMode(4096, 4096, 60, 1); err == nil {
+		t.Fatal("a refused configuration must be an error")
+	}
+	if w, h, _ := c.OutputSize(); w != 1280 || h != 800 {
+		t.Errorf("OutputSize after a refusal = %dx%d, want the old 1280x800", w, h)
+	}
+}
+
+func TestSetModeWithoutManager(t *testing.T) {
+	c, _ := startFake(t, fullGlobals()[:7])
+	if err := c.SetMode(1280, 800, 60, 1); !errors.Is(err, ErrMissingProtocol) {
+		t.Errorf("want ErrMissingProtocol, got %v", err)
+	}
+}
+
+func TestFit(t *testing.T) {
+	cases := []struct{ bw, bh, ww, wh, fw, fh int }{
+		{1280, 800, 1920, 1080, 1728, 1080}, // 16:10 screen on a 16:9 monitor: bars left and right
+		{1280, 800, 1280, 800, 1280, 800},   // same shape: fills
+		{1600, 600, 1280, 800, 1280, 480},   // wide screen in a narrower window: bars top and bottom
+		{1280, 800, 950, 530, 848, 530},     // a tile
+		{1280, 800, 0, 0, 0, 0},             // nothing to fit into
+	}
+	for _, c := range cases {
+		if fw, fh := fit(c.bw, c.bh, c.ww, c.wh); fw != c.fw || fh != c.fh {
+			t.Errorf("fit(%dx%d in %dx%d) = %dx%d, want %dx%d", c.bw, c.bh, c.ww, c.wh, fw, fh, c.fw, c.fh)
+		}
+	}
+}
+
+// Chromium and Electron read the DOM keyCode of anything but an ASCII letter
+// or digit from the physical key: a keysym on the Escape, BackSpace, Tab or
+// Enter key is acted on, not inserted. Every keysym must land on a printable
+// key, its own US key when it has one.
+func TestKeymapUsesPrintableKeys(t *testing.T) {
+	control := map[int]bool{1: true, 14: true, 15: true, 28: true, 29: true, 42: true, 54: true, 56: true, 58: true,
+		69: true, 70: true, 87: true, 88: true, 96: true, 97: true, 100: true, 102: true, 103: true, 104: true,
+		105: true, 106: true, 107: true, 108: true, 109: true, 110: true, 111: true, 125: true, 126: true, 127: true}
+	for code := 59; code <= 68; code++ {
+		control[code] = true // F1..F10
+	}
+	km := newKeymap()
+	for _, sym := range []string{"U002F", "U0061", "U003F", "U00E9", "U4E00", "U0020", "U0031"} {
+		if _, ok := km.add(sym); !ok {
+			t.Fatalf("add(%s) refused", sym)
+		}
+	}
+	want := map[string]int{"U002F": 53, "U0061": 30, "U0020": 57, "U0031": 2} // / a space 1 on their US keys
+	for sym, code := range want {
+		if got := km.keycode(sym) - 8; got != code {
+			t.Errorf("%s on evdev %d, want %d", sym, got, code)
+		}
+	}
+	if got := km.keycode("U003F") - 8; got == 53 || control[got] {
+		t.Errorf("? on evdev %d: its US key is taken by /, it must move to a free printable key", got)
+	}
+	for _, sym := range []string{"U00E9", "U4E00"} {
+		if got := km.keycode(sym) - 8; control[got] {
+			t.Errorf("%s landed on control key %d", sym, got)
+		}
+	}
+	// The whole pool, then a refusal: never a control key, never twice the same.
+	km = newKeymap()
+	seen := map[int]bool{}
+	for r := rune(0x4e00); ; r++ {
+		if _, ok := km.add(keysymForRune(r)); !ok {
+			break
+		}
+		code := km.keycode(keysymForRune(r)) - 8
+		if control[code] || seen[code] {
+			t.Errorf("U%04X on evdev %d (control %v, seen %v)", r, code, control[code], seen[code])
+		}
+		seen[code] = true
+	}
+	if len(seen) != maxKeysyms {
+		t.Errorf("pool holds %d keys, want %d", len(seen), maxKeysyms)
+	}
+	// A named key of Key goes on its own physical key.
+	km = newKeymap()
+	km.add("Return")
+	km.add("slash")
+	if km.keycode("Return")-8 != 28 || km.keycode("slash")-8 != 53 {
+		t.Errorf("Return on %d, slash on %d, want 28 and 53", km.keycode("Return")-8, km.keycode("slash")-8)
 	}
 }

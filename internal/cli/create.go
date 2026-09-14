@@ -54,8 +54,8 @@ func runCreate(e *Env) int {
 	if *asJSON {
 		return e.printJSON(rec)
 	}
-	fmt.Fprintf(e.Stdout, "name=%s\nsize=%dx%d\nworkspace_app=%d\nworkspace_mirror=%d\ninner_display=%s\n",
-		rec.Name, rec.Width, rec.Height, rec.WorkspaceApp, rec.WorkspaceMirror, rec.InnerDisplay)
+	fmt.Fprintf(e.Stdout, "name=%s\nsize=%dx%d\nworkspace_mirror=%d\ninner_display=%s\nrenderer=%s\nrender_device=%s\n",
+		rec.Name, rec.Width, rec.Height, rec.WorkspaceMirror, rec.InnerDisplay, rec.Renderer, rec.RenderDevice)
 	if rec.MirrorNote != "" {
 		fmt.Fprintf(e.Stdout, "mirror_note=%s\n", rec.MirrorNote)
 	}

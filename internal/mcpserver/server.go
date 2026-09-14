@@ -220,6 +220,11 @@ type createIn struct {
 	Mirror *bool  `json:"mirror,omitempty" jsonschema:"open a mirror window on one of the human's workspaces so they can watch. Leave it out to follow the human's configuration, which is what they want by default. Pass true when they asked to see the work or when showing it is the point, false for a screen they have no reason to watch"`
 }
 
+type mirrorIn struct {
+	Screen string `json:"screen,omitempty" jsonschema:"screen name; optional when the session owns exactly one screen"`
+	Open   *bool  `json:"open,omitempty" jsonschema:"true opens the mirror window (default), false closes it"`
+}
+
 type screenIn struct {
 	Screen string `json:"screen,omitempty" jsonschema:"screen name; optional when the session owns exactly one screen"`
 }
@@ -242,11 +247,12 @@ type closeIn struct {
 }
 
 type shotIn struct {
-	Screen string       `json:"screen,omitempty" jsonschema:"screen name; optional when the session owns exactly one screen"`
-	Scale  float64      `json:"scale,omitempty" jsonschema:"0.25 to 1 (default 1); the reply states the scale actually used"`
-	Region *screen.Rect `json:"region,omitempty" jsonschema:"capture only this rectangle, in screen pixels"`
-	Format string       `json:"format,omitempty" jsonschema:"png (default) or jpeg"`
-	Cursor *bool        `json:"cursor,omitempty" jsonschema:"draw the pointer (default true)"`
+	Screen   string       `json:"screen,omitempty" jsonschema:"screen name; optional when the session owns exactly one screen"`
+	Scale    float64      `json:"scale,omitempty" jsonschema:"0.25 to 1 (default 1); the reply states the scale actually used"`
+	Region   *screen.Rect `json:"region,omitempty" jsonschema:"capture only this rectangle, in screen pixels"`
+	Format   string       `json:"format,omitempty" jsonschema:"png (default) or jpeg"`
+	Cursor   *bool        `json:"cursor,omitempty" jsonschema:"draw the pointer (default true)"`
+	SettleMs int          `json:"settle_ms,omitempty" jsonschema:"wait this long before capturing, for a toast or an animation to settle (default 0)"`
 }
 
 type clickIn struct {
@@ -360,10 +366,11 @@ func tool[In any](s *Server, srv *mcp.Server, name, desc string, h handler[In]) 
 }
 
 func (s *Server) register(srv *mcp.Server) {
-	tool(s, srv, "setup", "Install what hyprcage needs on this machine (cage, wl-mirror) through the package manager. A password dialog opens on the human's screen: tell the human before calling it. Use it when screen_create fails with cage_missing, then retry.", s.setup)
-	tool(s, srv, "screen_create", "Create a virtual screen for yourself (headless output + nested compositor). Returns its name; use it in every other tool. Destroy it when done. The reply carries mirror_note when there is no mirror window for the human, and why.", s.screenCreate)
-	tool(s, srv, "screen_destroy", "Close a screen you created: kills its applications, removes the output and the mirror.", s.screenDestroy)
+	tool(s, srv, "setup", "Install what hyprcage needs on this machine (cage) through the package manager. A password dialog opens on the human's screen: tell the human before calling it. Use it when screen_create fails with cage_missing, then retry.", s.setup)
+	tool(s, srv, "screen_create", "Create a virtual screen for yourself: a compositor with an output of its own, invisible to the human's desktop. Returns its name; use it in every other tool. Destroy it when done. The reply carries mirror_note when there is no mirror window for the human, and why.", s.screenCreate)
+	tool(s, srv, "screen_destroy", "Close a screen you created: its applications, its mirror window and its compositor.", s.screenDestroy)
 	tool(s, srv, "screen_list", "List your screens (or every session's with all=true).", s.screenList)
+	tool(s, srv, "mirror", "Open (open=true, default) or close (open=false) the human's mirror window for a screen, without touching the screen. Use it when the human asks to watch, or to stop showing a screen.", s.mirror)
 	tool(s, srv, "app_launch", "Run a graphical application inside a screen. Returns its pid and, once it appears, its window.", s.appLaunch)
 	tool(s, srv, "app_close", "Ask a window of the screen to close gracefully. Window ids change when a window remaps, so take the id from windows rather than from an older reply.", s.appClose)
 	tool(s, srv, "windows", "List the windows of a screen with their ids, titles and app ids.", s.windows)
@@ -398,7 +405,7 @@ func (s *Server) screenCreate(in createIn) (*mcp.CallToolResult, error) {
 	}
 	out := map[string]any{
 		"screen": rec.Name, "width": rec.Width, "height": rec.Height,
-		"workspace_app": rec.WorkspaceApp, "workspace_mirror": rec.WorkspaceMirror,
+		"workspace_mirror": rec.WorkspaceMirror, "renderer": rec.Renderer,
 		"note": "coordinates are screen pixels; call screen_destroy when done",
 	}
 	if rec.MirrorNote != "" {
@@ -525,6 +532,33 @@ func (s *Server) appClose(in closeIn) (*mcp.CallToolResult, error) {
 	return textResult(out), nil
 }
 
+func (s *Server) mirror(in mirrorIn) (*mcp.CallToolResult, error) {
+	rec, _, err := s.resolve(in.Screen, false)
+	if err != nil {
+		return nil, err
+	}
+	if in.Open != nil && !*in.Open {
+		screen.StopMirror(rec.Name)
+		return textResult(map[string]any{"screen": rec.Name, "mirror": "closed"}), nil
+	}
+	c, err := s.hypr()
+	if err != nil {
+		return nil, err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	if err := screen.StartMirror(c, rec, exe, sysd.Available()); err != nil {
+		return nil, err
+	}
+	out := map[string]any{"screen": rec.Name, "mirror": "open"}
+	if st, alive := screen.ReadMirror(rec.Name); alive {
+		out["workspace_mirror"] = st.Workspace
+	}
+	return textResult(out), nil
+}
+
 func (s *Server) windows(in screenIn) (*mcp.CallToolResult, error) {
 	_, cl, err := s.resolve(in.Screen, true)
 	if err != nil {
@@ -548,6 +582,9 @@ func (s *Server) screenshot(in shotIn) (*mcp.CallToolResult, error) {
 	cursor := true
 	if in.Cursor != nil {
 		cursor = *in.Cursor
+	}
+	if in.SettleMs > 0 {
+		time.Sleep(time.Duration(min(in.SettleMs, 10000)) * time.Millisecond)
 	}
 	res, err := screen.Shot(cl, screen.ShotOptions{Scale: in.Scale, Region: in.Region, Format: in.Format, Cursor: cursor,
 		MaxSide: s.cfg.ShotMaxSide, MaxBytes: s.cfg.ShotMaxBytes})

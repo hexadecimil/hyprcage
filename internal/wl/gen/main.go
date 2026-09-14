@@ -25,6 +25,10 @@ var sources = []string{
 	"../../protocols/virtual-keyboard-unstable-v1.xml",
 	"../../protocols/wlr-screencopy-unstable-v1.xml",
 	"../../protocols/wlr-foreign-toplevel-management-unstable-v1.xml",
+	"../../protocols/wlr-output-management-unstable-v1.xml",
+	"../../protocols/xdg-shell.xml",
+	"../../protocols/linux-dmabuf-v1.xml",
+	"../../protocols/viewporter.xml",
 }
 
 const outFile = "protocols_gen.go"

@@ -8,7 +8,7 @@ import (
 	"github.com/hexadecimil/hyprcage/internal/session"
 )
 
-// Get loads a record and checks that its output and cage are still there.
+// Get loads a record and checks that its cage still runs.
 func Get(c *Ctx, name string) (*registry.Screen, error) {
 	rec, err := registry.Load(name)
 	if errors.Is(err, registry.ErrNotFound) {
@@ -17,8 +17,14 @@ func Get(c *Ctx, name string) (*registry.Screen, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !hasMonitor(c.Hypr, rec.Name) || (rec.CagePID > 0 && !session.PIDAlive(rec.CagePID, 0)) {
-		return rec, errf(CodeDead, "hyprcage destroy "+name+" then create a new one", "screen %s is dead: its output or its cage is gone", name)
+	dead := false
+	if rec.Version < RecordVersion {
+		dead = !hasMonitor(c.Hypr, rec.Name) || (rec.CagePID > 0 && !session.PIDAlive(rec.CagePID, 0))
+	} else {
+		dead = !Alive(rec)
+	}
+	if dead {
+		return rec, errf(CodeDead, "hyprcage destroy "+name+" then create a new one", "screen %s is dead: its cage is gone", name)
 	}
 	return rec, nil
 }

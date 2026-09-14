@@ -5,10 +5,11 @@ description: REQUIRED before launching any graphical application FOR YOURSELF (t
 
 # hyprcage: your own screen, never the human's
 
-The human works on workspaces 1–5 with their own mouse and keyboard. Anything
-you launch for yourself goes on a **hyprcage screen**: a virtual output with its
-own compositor and seat. The human can watch it through a mirror window on one
-of their spare workspaces (6–9 by default) and is never interrupted.
+Anything you launch for yourself goes on a **hyprcage screen**: a compositor
+with an output and a seat of its own, in memory. The human's compositor never
+learns it exists, so their monitors, workspaces, focus and cursor cannot move
+because of you. They can watch through a mirror window on one of their spare
+workspaces (6–9 by default), and are never interrupted.
 
 ## When
 
@@ -31,9 +32,9 @@ installs nothing and asks them for a password for nothing.
 ## How (MCP tools)
 
 1. `screen_create` → **one screen per application** (cage shows one app at a time), 1280x800 by default. Remember its name.
-   The human watches a screen through a mirror window. Leave `mirror` out and their configuration decides, which is the right answer unless they said something: pass `true` when they asked to watch or when showing the result is the point, `false` for a long job they have no reason to see. The reply carries `mirror_note` when there is none, and why.
+   The human watches a screen through a mirror window. Leave `mirror` out and their configuration decides, which is the right answer unless they said something: pass `true` when they asked to watch or when showing the result is the point, `false` for a long job they have no reason to see. The reply carries `mirror_note` when there is none, and why. The `mirror` tool opens or closes that window later without touching the screen, so a screen made without one can still be shown on request.
 2. `app_launch` with the command. Browsers: always a dedicated profile, and `--kiosk` with the URL when the task is a page (the whole screen is the page). Chromium: `chromium --ozone-platform=wayland --user-data-dir=/tmp/hc-profile --no-first-run --kiosk <url>`. Firefox: `mkdir -p /tmp/hc-ff && firefox --no-remote --profile /tmp/hc-ff --kiosk <url>` (the profile directory must exist). Drop `--kiosk` only when you need tabs or the address bar.
-3. `screenshot`, then `click` / `type` / `key` / `scroll` / `drag` with **screen pixel coordinates**. Use `wait` (stability or title) instead of sleeping. Ask for `screenshot_after` only when you need to see the result.
+3. `screenshot`, then `click` / `type` / `key` / `scroll` / `drag` with **screen pixel coordinates**. Use `wait` (stability or title) instead of sleeping. Ask for `screenshot_after` only when you need to see the result; `settle_ms` on `screenshot` waits for a toast or an animation first.
 4. `screen_destroy` **as soon as you are done**, before handing back to the human. If you keep a screen open between steps, say so.
 
 ## Never
@@ -47,4 +48,4 @@ installs nothing and asks them for a password for nothing.
 ## CLI twin
 
 Everything exists as `hyprcage <command>` for a terminal: `create`, `launch`,
-`shot`, `click`, `type`, `key`, `destroy`, `list`, `gc`, `doctor`.
+`shot`, `click`, `type`, `key`, `destroy`, `mirror`, `list`, `gc`, `doctor`.

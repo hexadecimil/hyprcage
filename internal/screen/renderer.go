@@ -13,7 +13,10 @@ import (
 // first creation tries the default and falls back to pixman, and the answer
 // is remembered across sessions.
 
-const rendererPixman = "pixman"
+const (
+	rendererGLES   = "gles2"
+	rendererPixman = "pixman"
+)
 
 // RendererStatePath is where the learnt renderer is kept, so that doctor can
 // tell the human which file to delete.
@@ -58,13 +61,15 @@ func rememberRenderer(r string) {
 }
 
 // rendererCandidates lists what to try, in order: the learnt renderer alone,
-// else the default followed by pixman.
+// else the GPU renderer followed by pixman. Names are wlroots' own, passed
+// as WLR_RENDERER: never "auto", whose silent fallback to software would
+// hide from the probe which renderer actually runs.
 func rendererCandidates(configured string) []string {
 	switch KnownRenderer(configured) {
 	case rendererPixman:
 		return []string{rendererPixman}
-	case "gles2", "gles", "default":
-		return []string{""}
+	case rendererGLES, "gles", "default":
+		return []string{rendererGLES}
 	}
-	return []string{"", rendererPixman}
+	return []string{rendererGLES, rendererPixman}
 }

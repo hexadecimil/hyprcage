@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/hexadecimil/hyprcage/internal/hypr"
+	"github.com/hexadecimil/hyprcage/internal/config"
 	"github.com/hexadecimil/hyprcage/internal/lock"
 	"github.com/hexadecimil/hyprcage/internal/notify"
 	"github.com/hexadecimil/hyprcage/internal/registry"
-	"github.com/hexadecimil/hyprcage/internal/shellq"
+	"github.com/hexadecimil/hyprcage/internal/session"
 	"github.com/hexadecimil/hyprcage/internal/sysd"
 	"github.com/hexadecimil/hyprcage/internal/wl"
 )
@@ -29,6 +30,9 @@ type CreateOptions struct {
 	Owner  registry.Owner
 }
 
+// RecordVersion is the format of the records this hyprcage writes.
+const RecordVersion = 3
+
 // mirrorWanted resolves the two opinions about the human's mirror window.
 // The configuration carries the human's default and the caller may depart
 // from it in either direction: a caller with no opinion passes nil.
@@ -39,9 +43,9 @@ func mirrorWanted(want *bool, configured bool) bool {
 	return configured
 }
 
-// Create implements cahier §4.2. Step 7's check of cage's four Wayland
-// globals waits for the wl package (spike S7); until then the cage window
-// showing up fullscreen in Hyprland is the readiness signal.
+// Create makes a screen: cage on wlroots' headless backend, with an output
+// of its own that no other compositor knows about. Nothing here touches the
+// human's compositor except, at the end, the launch of the mirror window.
 func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	cfg := c.Cfg
 	if opts.Name == "" {
@@ -72,7 +76,7 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	}
 	defer release()
 
-	// Step 1: reap orphans first (M4).
+	// Step 1: reap orphans first (M4), then the quota.
 	_, _ = GC(c, GCOptions{})
 	if _, err := registry.Load(opts.Name); err == nil {
 		return nil, errf(CodeInvalidName, "pick another name", "screen %s already exists", opts.Name)
@@ -90,56 +94,33 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 		}
 	}
 
-	// Step 2: workspaces.
-	wss, err := c.Hypr.Workspaces()
-	if err != nil {
-		return nil, errf(CodeHyprland, "", "%v", err)
-	}
-	used := map[int]bool{}
-	for _, w := range wss {
-		used[w.ID] = true
-	}
-	wsApp := freeWorkspace(used, cfg.WorkspaceMin, cfg.WorkspaceMax)
-	if wsApp == 0 {
-		return nil, fmt.Errorf("no free workspace in [%d, %d]", cfg.WorkspaceMin, cfg.WorkspaceMax)
-	}
+	// Step 2: the mirror's workspace, and the reason when there is none.
 	wsMirror, mirrorNote := 0, ""
 	switch {
 	case !mirrorWanted(opts.Mirror, cfg.MirrorEnabled):
 		mirrorNote = "not asked for"
+	case c.Hypr == nil:
+		if opts.Mirror == nil {
+			// Without a compositor that places windows, a mirror would open
+			// on whatever the human is looking at: only on explicit request.
+			mirrorNote = "no Hyprland to place the window on, open one with `hyprcage mirror " + opts.Name + "`"
+		} else {
+			wsMirror = -1 // wanted, unplaced
+		}
 	default:
-		if _, err := exec.LookPath("wl-mirror"); err != nil {
-			mirrorNote = "wl-mirror is not installed"
-		} else if wsMirror = freeWorkspace(used, cfg.MirrorMin, cfg.MirrorMax); wsMirror == 0 {
-			mirrorNote = fmt.Sprintf("workspaces %d to %d all have windows", cfg.MirrorMin, cfg.MirrorMax)
+		if wsMirror = mirrorWorkspace(c, opts.Owner); wsMirror == 0 {
+			mirrorNote = fmt.Sprintf("workspaces %d to %d are all taken", cfg.MirrorMin, cfg.MirrorMax)
 		}
 	}
 
-	// Step 3: declare the output and its workspace before creating it.
-	mons, err := c.Hypr.Monitors()
-	if err != nil {
-		return nil, errf(CodeHyprland, "", "%v", err)
-	}
-	posX, posY := farPosition(mons, opts.Width)
-	if err := c.Driver.DeclareMonitor(opts.Name, opts.Width, opts.Height, cfg.RefreshHz, posX, posY, 1); err != nil {
-		return nil, err
-	}
-	if err := c.Driver.WorkspaceRule(wsApp, opts.Name); err != nil {
-		return nil, err
-	}
-	if wsMirror > 0 {
-		// A gap-free rule on the mirror workspace lets the mirror window
-		// tile to the full monitor; it is not pinned to a monitor (the
-		// human moves it with SUPER+n), so no monitor field.
-		_ = c.Driver.WorkspaceGapless(wsMirror)
-	}
-
-	// Step 4: record and safety timer, before anything exists (N2).
+	// Step 3: the GPU, then the record and the safety timer, before any
+	// process exists (N2).
+	device, how := RenderDevice(cfg.RenderDevice, humanDisplay(c))
 	rec := &registry.Screen{
-		Name: opts.Name, CreatedAt: time.Now(), State: "starting",
-		Width: opts.Width, Height: opts.Height, PosX: posX, PosY: posY,
-		WorkspaceApp: wsApp, WorkspaceMirror: wsMirror, MirrorNote: mirrorNote,
-		Slice: sysd.SliceName(opts.Name), Owner: opts.Owner,
+		Name: opts.Name, CreatedAt: time.Now(), State: "starting", Version: RecordVersion,
+		Width: opts.Width, Height: opts.Height,
+		WorkspaceMirror: max(wsMirror, 0), MirrorNote: mirrorNote,
+		Slice: sysd.SliceName(opts.Name), Owner: opts.Owner, RenderDevice: device, RenderDeviceBy: how,
 	}
 	if err := registry.Save(rec); err != nil {
 		return nil, err
@@ -156,138 +137,50 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 		return nil, err
 	}
 
-	// Step 5: create the output and check its geometry.
-	if err := c.Hypr.CreateHeadless(opts.Name); err != nil {
-		return fail(err)
-	}
-	mon, err := waitMonitor(c.Hypr, opts.Name, 2*time.Second)
-	if err != nil {
-		return fail(err)
-	}
-	if mon.Width != opts.Width || mon.Height != opts.Height || mon.Scale != 1 {
-		_ = c.Driver.DeclareMonitor(opts.Name, opts.Width, opts.Height, cfg.RefreshHz, posX, posY, 1)
-		time.Sleep(200 * time.Millisecond)
-		if mon, err = waitMonitor(c.Hypr, opts.Name, time.Second); err != nil {
-			return fail(err)
-		}
-		if mon.Width != opts.Width || mon.Height != opts.Height || mon.Scale != 1 {
-			return fail(fmt.Errorf("output %s is %dx%d scale %v, wanted %dx%d scale 1 (a catch-all monitor rule may override it)",
-				opts.Name, mon.Width, mon.Height, mon.Scale, opts.Width, opts.Height))
-		}
-	}
-	// A desktop shell may put its bar on every output, this one included
-	// (Omarchy does): the bar's exclusive zone shrinks the workspace and the
-	// tiled cage window with it. The output is enlarged by that reserved
-	// area so that the cage window keeps exactly opts.Width x opts.Height;
-	// the agent's screen is the cage window, captured inside cage, never
-	// the Hyprland output. A bar that attaches a moment later is handled
-	// below, when the cage window turns out too small.
-	waitForBar(c, opts.Name, cfg.OutputPrefix, knownScreens())
-	if changed, err := fitReserved(c, rec); err != nil {
-		return fail(err)
-	} else if changed {
-		// The bar re-creates its layer after the mode change; cage must not
-		// start while the output is mid-transient (a client that maps then
-		// never receives input from cage).
-		waitReservedSettled(c, rec, 3*time.Second)
-	}
-
-	// Step 6 and 7: cage, launched by Hyprland so that the exec rules apply
-	// by pid; then its inner socket and its window. The renderer is tried in
-	// order (see renderer.go): a candidate that maps no window within a few
-	// seconds is killed and the next one is tried.
-	// No fullscreen exec rule: Hyprland 0.56 ignores it; the workspace rule
-	// (no gaps, no border) makes the tiled window cover the output exactly.
-	rules := hypr.ExecRules{Workspace: fmt.Sprintf("%d silent", wsApp), NoInitialFocus: true, NoAnim: true}
+	// Step 4 to 6: cage, its output at the asked size, and one capture to
+	// prove the renderer works. The renderer is named explicitly: wlroots
+	// left to itself falls back to software rendering without a word, and
+	// the probe would then bless a screen no application can use a GPU on.
+	// A GPU renderer that fails is retried in software and remembered; a
+	// remembered software renderer that fails is forgotten.
+	var cl *wl.Client
 	candidates := rendererCandidates(cfg.Renderer)
-	var win *hypr.Client
 	for i, renderer := range candidates {
 		_ = os.Remove(registry.InnerPath(opts.Name))
-		cageCmd := []string{"env", "HYPRCAGE_SCREEN=" + opts.Name}
-		if renderer != "" {
-			cageCmd = append(cageCmd, "WLR_RENDERER="+renderer)
-		}
-		cageCmd = append(cageCmd, "cage", "-d", "--", exe, "_holder", opts.Name)
-		argv := cageCmd
-		if useSystemd {
-			argv = sysd.ScopeArgs(opts.Name, "cage", cageCmd)
-		}
-		if err := c.Driver.Exec(shellq.Join(argv), rules); err != nil {
+		if err := startCage(c, rec, exe, renderer, useSystemd); err != nil {
 			return fail(err)
 		}
 		inner, err := waitInner(opts.Name, 5*time.Second)
-		if err != nil {
-			return fail(err)
-		}
-		rec.InnerDisplay, rec.InnerX11 = inner["WAYLAND_DISPLAY"], inner["DISPLAY"]
-		var tooSmall bool
-		win, tooSmall, err = waitCageWindow(c.Hypr, wsApp, opts.Width, opts.Height, 4*time.Second)
-		if tooSmall {
-			if changed, ferr := fitReserved(c, rec); ferr == nil && changed {
-				win, _, err = waitCageWindow(c.Hypr, wsApp, opts.Width, opts.Height, 4*time.Second)
-			}
+		if err == nil {
+			rec.InnerDisplay, rec.InnerX11 = inner["WAYLAND_DISPLAY"], inner["DISPLAY"]
+			rec.CagePID = atoi(inner["CAGE_PID"])
+			rec.CagePIDStart, _ = session.ProcStart(rec.CagePID)
+			cl, err = readyScreen(rec, opts.Width, opts.Height)
 		}
 		if err == nil {
-			// The window maps under GLES even on a virtualized GPU (virgl),
-			// but screencopy then hangs there. Probe one capture: a renderer
-			// that cannot be captured is useless, so fall back like a window
-			// that never appeared.
-			if perr := probeCapture(rec.InnerDisplay); perr != nil {
-				err = perr
-			}
-		}
-		if err == nil {
-			if renderer != "" {
+			rec.Renderer = renderer
+			if renderer != rendererPixman {
 				rememberRenderer(renderer)
 			}
 			break
 		}
+		CloseConn(opts.Name)
+		killCage(opts.Name, useSystemd)
 		if i == len(candidates)-1 {
-			forgetRenderer() // what was learnt did not work: try everything again
+			forgetRenderer()
 			return fail(err)
 		}
-		rememberRenderer(rendererPixman) // next candidate; skip GLES next time
-		killCage(opts.Name, useSystemd)
+		rememberRenderer(rendererPixman) // next candidate; skip the GPU next time
 	}
-	rec.CagePID = win.PID
-	if rec.Reserved != [4]int{} {
-		// Hand the screen over only once the cage window has held its size
-		// for a moment: cage's own output follows every resize.
-		waitCageWindowHeld(c.Hypr, wsApp, opts.Width, opts.Height, 800*time.Millisecond, 4*time.Second)
-	}
+	_ = cl
 
-	// Step 8: mirror for the human, optional.
-	if wsMirror > 0 {
-		// The gap-free workspace rule already makes the tiled mirror cover
-		// its workspace, so wl-mirror's own -F (an xdg fullscreen request)
-		// is not used: verified on 0.56.2, -F makes the window ignore the
-		// "workspace N silent" rule and land fullscreen on the human's
-		// current workspace instead. Under software rendering its dmabuf
-		// backends cannot allocate, so screencopy over shm is forced.
-		mirrorCmd := []string{"wl-mirror"}
-		if KnownRenderer(cfg.Renderer) == rendererPixman {
-			mirrorCmd = append(mirrorCmd, "-b", "screencopy-shm")
-		}
-		mirrorCmd = append(mirrorCmd, opts.Name)
-		margv := mirrorCmd
-		if useSystemd {
-			margv = sysd.ScopeArgs(opts.Name, "mirror", mirrorCmd)
-		}
-		mrules := hypr.ExecRules{Workspace: fmt.Sprintf("%d silent", wsMirror), NoInitialFocus: true, NoAnim: true}
-		if err := c.Driver.Exec(shellq.Join(margv), mrules); err != nil {
-			rec.WorkspaceMirror, rec.MirrorNote = 0, "wl-mirror could not be started"
-		} else {
-			waitMirrorWindow(c.Hypr, opts.Name, wsMirror, 4*time.Second) // best effort
+	// Step 7: the mirror.
+	if wsMirror != 0 {
+		if err := StartMirror(c, rec, exe, useSystemd); err != nil {
+			rec.WorkspaceMirror, rec.MirrorNote = 0, "the mirror could not be started: "+err.Error()
 		}
 	}
 
-	// Step 9: the watcher re-asserts the geometry after `hyprctl reload`
-	// (N11); it lives in the screen's slice and dies with it.
-	watchCmd := []string{exe, "_watch", opts.Name}
-	if useSystemd {
-		watchCmd = sysd.ScopeArgs(opts.Name, "watch", watchCmd)
-	}
-	startDetached(watchCmd)
 	rec.State = "ready"
 	if err := registry.Save(rec); err != nil {
 		return fail(err)
@@ -302,183 +195,74 @@ func Create(c *Ctx, opts CreateOptions) (*registry.Screen, error) {
 	return rec, nil
 }
 
-// Reassert re-applies the output declaration and the workspace rule of a
-// screen, after a Hyprland config reload wiped the runtime ones. The output
-// is declared with the reserved area remembered in the record, not with a
-// live reading: a bar re-creates its layer around every output change, and
-// a reading taken in that instant would say there is no bar.
-func Reassert(c *Ctx, rec *registry.Screen) error {
-	w, h := fittedSize(rec.Width, rec.Height, rec.Reserved)
-	if err := declareIfMoved(c, rec, w, h); err != nil {
-		return err
+// startCage launches cage on the headless backend in the screen's scope,
+// with an environment built rather than inherited: what wlroots reads must
+// be exactly what hyprcage decided, and nothing must point cage at the
+// human's compositor.
+func startCage(c *Ctx, rec *registry.Screen, exe, renderer string, useSystemd bool) error {
+	env := map[string]string{
+		"WLR_BACKENDS":         "headless",
+		"WLR_HEADLESS_OUTPUTS": "1",
+		"WLR_RENDERER":         renderer,
+		"HYPRCAGE_SCREEN":      rec.Name,
 	}
-	return c.Driver.WorkspaceRule(rec.WorkspaceApp, rec.Name)
-}
-
-// declareIfMoved applies the output declaration only when the live output
-// does not already have that geometry. Every declaration goes through
-// Hyprland's monitor rules, and those are re-applied to every monitor,
-// which on a real machine can cost the human a modeset: a screen that goes
-// black for an instant and comes back. One declaration per screen cannot be
-// avoided, the repeats can.
-func declareIfMoved(c *Ctx, rec *registry.Screen, w, h int) error {
-	if m, err := waitMonitor(c.Hypr, rec.Name, time.Second); err == nil &&
-		m.Width == w && m.Height == h && m.X == rec.PosX && m.Y == rec.PosY && m.Scale == 1 {
-		return nil
+	if rec.RenderDevice != "" {
+		env["WLR_RENDER_DRM_DEVICE"] = rec.RenderDevice
 	}
-	return c.Driver.DeclareMonitor(rec.Name, w, h, c.Cfg.RefreshHz, rec.PosX, rec.PosY, 1)
-}
-
-// Refit re-declares the output of a screen if its reserved area changed (a
-// bar appeared on it, or went away for good), so that the cage window keeps
-// the screen's size, and records the new reserved area. It reports whether
-// the output changed. Callers must make sure the reserved area is settled:
-// see the watcher.
-func Refit(c *Ctx, rec *registry.Screen) (bool, error) {
-	changed, err := fitReserved(c, rec)
-	if err == nil && changed {
-		err = registry.Save(rec)
-	}
-	return changed, err
-}
-
-// ReservedArea reads the current reserved area of the screen's output.
-func ReservedArea(c *Ctx, rec *registry.Screen) ([4]int, bool) {
-	mons, err := c.Hypr.Monitors()
-	if err != nil {
-		return [4]int{}, false
-	}
-	for _, m := range mons {
-		if m.Name == rec.Name {
-			return m.Reserved, true
+	drop := func(k string) bool {
+		switch k {
+		case "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE":
+			return true
 		}
+		return strings.HasPrefix(k, "WLR_")
 	}
-	return [4]int{}, false
-}
-
-// waitForBar gives a desktop bar that sits on every output the time to land
-// on the new one, so that the output is fitted before cage maps rather than
-// a few seconds after. It only waits when a real monitor carries a reserved
-// area (the system has such a bar), and at most barGrace: a bar confined
-// to one monitor costs that much once per screen, a system without a bar
-// costs nothing.
-func waitForBar(c *Ctx, name, prefix string, known map[string]bool) {
-	mons, err := c.Hypr.Monitors()
-	if err != nil {
-		return
-	}
-	hasBar := false
-	for _, m := range mons {
-		if !isAgentOutput(m.Name, prefix, known) && m.Reserved != [4]int{} {
-			hasBar = true
+	var full []string
+	for _, kv := range os.Environ() {
+		k, _, _ := strings.Cut(kv, "=")
+		if drop(k) {
+			continue
 		}
-	}
-	if !hasBar {
-		return
-	}
-	deadline := time.Now().Add(barGrace)
-	for time.Now().Before(deadline) {
-		if m, err := waitMonitor(c.Hypr, name, time.Second); err == nil && m.Reserved != [4]int{} {
-			return
+		if _, ok := env[k]; ok {
+			continue
 		}
-		time.Sleep(100 * time.Millisecond)
+		full = append(full, kv)
 	}
-}
-
-const barGrace = 3 * time.Second
-
-// waitReservedSettled returns once the output's reserved area has been the
-// recorded one, without change, for half a second (the bar remapped after
-// a mode change), or after timeout.
-func waitReservedSettled(c *Ctx, rec *registry.Screen, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	var since time.Time
-	for time.Now().Before(deadline) {
-		if r, ok := ReservedArea(c, rec); ok && r == rec.Reserved && r != [4]int{} {
-			if since.IsZero() {
-				since = time.Now()
-			} else if time.Since(since) >= 500*time.Millisecond {
-				return
-			}
-		} else {
-			since = time.Time{}
-		}
-		time.Sleep(100 * time.Millisecond)
+	for k, v := range env {
+		full = append(full, k+"="+v)
 	}
-}
-
-// waitCageWindowHeld returns once the cage window has kept width x height
-// (or fullscreen) for hold, or after timeout.
-func waitCageWindowHeld(h *hypr.Instance, ws, width, height int, hold, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	var since time.Time
-	for time.Now().Before(deadline) {
-		ok := false
-		if cls, err := h.Clients(); err == nil {
-			for i := range cls {
-				if cls[i].Workspace.ID == ws && (cls[i].Fullscreen != 0 || (cls[i].Size[0] == width && cls[i].Size[1] == height)) {
-					ok = true
-				}
-			}
-		}
-		if !ok {
-			since = time.Time{}
-		} else if since.IsZero() {
-			since = time.Now()
-		} else if time.Since(since) >= hold {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
+	argv := []string{"cage", "-d", "--", exe, "_holder", rec.Name}
+	if useSystemd {
+		argv = sysd.ScopeArgs(rec.Name, "cage", argv)
 	}
-}
-
-// fittedSize is the output size that leaves width x height to the tiled
-// window once a reserved area (left, top, right, bottom) is taken out.
-func fittedSize(width, height int, reserved [4]int) (int, int) {
-	return width + reserved[0] + reserved[2], height + reserved[1] + reserved[3]
-}
-
-// fitReserved re-declares the output enlarged by its current reserved area
-// and waits for the new mode; it records the reserved area in rec and
-// reports whether the output changed.
-func fitReserved(c *Ctx, rec *registry.Screen) (bool, error) {
-	mon, err := waitMonitor(c.Hypr, rec.Name, time.Second)
-	if err != nil {
-		return false, err
-	}
-	rec.Reserved = mon.Reserved
-	w, h := fittedSize(rec.Width, rec.Height, mon.Reserved)
-	if mon.Width == w && mon.Height == h {
-		return false, nil
-	}
-	if err := c.Driver.DeclareMonitor(rec.Name, w, h, c.Cfg.RefreshHz, rec.PosX, rec.PosY, 1); err != nil {
-		return false, err
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		m, err := waitMonitor(c.Hypr, rec.Name, time.Second)
-		if err != nil {
-			return false, err
-		}
-		if m.Width == w && m.Height == h {
-			return true, nil
-		}
-		if time.Now().After(deadline) {
-			return false, fmt.Errorf("output %s is %dx%d, wanted %dx%d to absorb a reserved area of %v", rec.Name, m.Width, m.Height, w, h, mon.Reserved)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// startDetached runs argv in its own session, stdio to /dev/null, reaped
-// in the background.
-func startDetached(argv []string) {
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = full
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if f := cageLog(rec.Name); f != nil {
+		cmd.Stdout, cmd.Stderr = f, f
+		defer f.Close()
+	}
 	if err := cmd.Start(); err != nil {
-		return
+		return errf(CodeCage, "", "starting cage: %v", err)
 	}
 	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// readyScreen connects to the new cage, gives its output the asked size and
+// checks that a capture completes. It returns the connection, cached for
+// the other operations.
+func readyScreen(rec *registry.Screen, width, height int) (*wl.Client, error) {
+	cl, err := Open(rec)
+	if err != nil {
+		return nil, err
+	}
+	if err := cl.SetMode(width, height, 60, 1); err != nil {
+		return nil, errf(CodeCage, "see "+CageLogPath(rec.Name), "cage did not take the size %dx%d: %v", width, height, err)
+	}
+	if err := probeCapture(cl); err != nil {
+		return nil, err
+	}
+	return cl, nil
 }
 
 // captureProbe is how long the probe waits. It is generous because the
@@ -488,13 +272,9 @@ func startDetached(argv []string) {
 const captureProbe = 15 * time.Second
 
 // probeCapture checks that screencopy actually completes on a screen, with a
-// short deadline: it hangs under virgl's GLES path, so a timeout here means
-// the renderer must change. The abandoned connection is closed on return.
-func probeCapture(display string) error {
-	cl, err := wl.Connect(display)
-	if err != nil {
-		return err
-	}
+// deadline: it hangs under virgl's GLES path, so a timeout here means the
+// renderer must change.
+func probeCapture(cl *wl.Client) error {
 	done := make(chan error, 1)
 	go func() {
 		_, e := cl.Capture(false)
@@ -502,40 +282,100 @@ func probeCapture(display string) error {
 	}()
 	select {
 	case e := <-done:
-		cl.Close()
 		return e
 	case <-time.After(captureProbe):
-		cl.Close()
 		return errf(CodeCapture, "the renderer in use cannot be captured, or the machine is too busy to answer in time", "screencopy did not complete within %s", captureProbe)
 	}
 }
 
-// killCage stops a cage that never mapped a window: its holder is killed
-// (cage exits when its child exits), the scope stopped when systemd is used.
+// humanDisplay is the Wayland socket of the human's compositor: the
+// environment's, or the Hyprland instance's when hyprcage runs from a
+// place that has no WAYLAND_DISPLAY (a service, an ssh session).
+func humanDisplay(c *Ctx) string {
+	if d := os.Getenv("WAYLAND_DISPLAY"); d != "" {
+		return d
+	}
+	if c.Hypr != nil {
+		if d, err := c.Hypr.WaylandDisplay(); err == nil {
+			return d
+		}
+	}
+	return ""
+}
+
 func killCage(name string, useSystemd bool) {
 	if useSystemd {
 		_ = sysd.StopUnit(sysd.UnitName(name, "cage") + ".scope")
 	}
-	_ = exec.Command("pkill", "-f", "_holder "+name+"$").Run()
+	killScreenProcesses(name, syscall.SIGTERM)
 	time.Sleep(300 * time.Millisecond)
 }
 
-// waitMirrorWindow waits, best effort, for wl-mirror's window to map so that
-// screen_create returns with the mirror already there for the human.
-func waitMirrorWindow(h *hypr.Instance, name string, ws int, timeout time.Duration) {
-	title := "Wayland Output Mirror for " + name
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		cls, err := h.Clients()
-		if err == nil {
-			for i := range cls {
-				if cls[i].Workspace.ID == ws && cls[i].Title == title {
-					return
-				}
+// slot is what a screen's record says about its mirror: the workspace it
+// was given, whose it is, and whether the screen still runs.
+type slot struct {
+	ws    int
+	owner registry.Owner
+	alive bool
+}
+
+// mirrorWorkspace picks the workspace for a screen's mirror window, 0 when
+// none is left. Hyprland's workspaces are the ones holding windows; the
+// records add the ones already given to a screen, because a mirror that
+// was just assigned a workspace has not mapped its window yet, so Hyprland
+// does not know about it and two screens would otherwise land on the same
+// one.
+func mirrorWorkspace(c *Ctx, owner registry.Owner) int {
+	var occupied []int
+	if wss, err := c.Hypr.Workspaces(); err == nil {
+		for _, w := range wss {
+			occupied = append(occupied, w.ID)
+		}
+	}
+	var slots []slot
+	if recs, err := registry.List(); err == nil {
+		for _, r := range recs {
+			if r.WorkspaceMirror > 0 {
+				slots = append(slots, slot{r.WorkspaceMirror, r.Owner, Alive(r)})
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
+	return pickWorkspace(c.Cfg, owner, occupied, slots)
+}
+
+// pickWorkspace applies mirror.group. A workspace that already holds
+// mirrors is joined when the group allows it, "session" for mirrors of the
+// same session and "pack" for anyone's, and only while it holds fewer than
+// mirror.per_workspace live ones; the lowest such workspace wins, so that
+// the mirrors gather rather than spread. Failing that, the first workspace
+// of the range that holds nothing at all. "screen" never joins.
+func pickWorkspace(cfg config.Config, owner registry.Owner, occupied []int, slots []slot) int {
+	used := map[int]bool{}
+	for _, ws := range occupied {
+		used[ws] = true
+	}
+	held, joinable := map[int]int{}, map[int]bool{}
+	for _, s := range slots {
+		used[s.ws] = true
+		if !s.alive {
+			continue
+		}
+		held[s.ws]++
+		switch cfg.MirrorGroup {
+		case "session":
+			if sameOwner(s.owner, owner) {
+				joinable[s.ws] = true
+			}
+		case "pack":
+			joinable[s.ws] = true
+		}
+	}
+	for ws := cfg.MirrorMin; ws <= cfg.MirrorMax; ws++ {
+		if joinable[ws] && held[ws] < cfg.MirrorPerWorkspace {
+			return ws
+		}
+	}
+	return freeWorkspace(used, cfg.MirrorMin, cfg.MirrorMax)
 }
 
 func freeWorkspace(used map[int]bool, min, max int) int {
@@ -547,44 +387,7 @@ func freeWorkspace(used map[int]bool, min, max int) int {
 	return 0
 }
 
-// farGap is the distance kept between the agent's output and everything else.
-const farGap = 10000
-
-// farPosition places the output far to the LEFT of every monitor, with its
-// right edge at or below 0. Verified on Hyprland 0.56.2: a monitor placed to
-// the right (or with a right edge above 0) makes every `auto`-positioned
-// real monitor jump next to it, which is the opposite of a barrier; a
-// negative position leaves `auto` monitors where they are. The gap keeps the
-// output non-adjacent, and Hyprland clamps the cursor to the nearest monitor
-// box, so the human's pointer can never reach it (cahier §2.2.1).
-func farPosition(mons []hypr.Monitor, width int) (int, int) {
-	minX := 0
-	for _, m := range mons {
-		if m.X < minX {
-			minX = m.X
-		}
-	}
-	return minX - farGap - width, 0
-}
-
-func waitMonitor(h *hypr.Instance, name string, timeout time.Duration) (*hypr.Monitor, error) {
-	deadline := time.Now().Add(timeout)
-	for {
-		mons, err := h.Monitors()
-		if err == nil {
-			for i := range mons {
-				if mons[i].Name == name {
-					return &mons[i], nil
-				}
-			}
-		}
-		if time.Now().After(deadline) {
-			return nil, errf(CodeTimeout, "", "output %s did not appear", name)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
+// waitInner waits for _holder to publish cage's sockets.
 func waitInner(name string, timeout time.Duration) (map[string]string, error) {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -593,45 +396,19 @@ func waitInner(name string, timeout time.Duration) (map[string]string, error) {
 			return m, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, errf(CodeCage, "journalctl --user -u "+sysd.UnitName(name, "cage"), "cage did not publish its socket within %s", timeout)
+			return nil, errf(CodeCage, "see "+CageLogPath(name), "cage did not publish its socket within %s", timeout)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-// waitCageWindow waits for cage's window on the workspace, covering the
-// output exactly: fullscreen, or tiled at the output's size (workspace rule).
-// waitCageWindow waits for the cage window on the workspace to be
-// fullscreen or exactly width x height. A window that stays at another size
-// is reported early (tooSmall) so that the caller can absorb a reserved
-// area and try again.
-func waitCageWindow(h *hypr.Instance, ws, width, height int, timeout time.Duration) (win *hypr.Client, tooSmall bool, err error) {
-	deadline := time.Now().Add(timeout)
-	var seen *hypr.Client
-	var mismatchSince time.Time
-	for {
-		cls, cerr := h.Clients()
-		if cerr == nil {
-			for i := range cls {
-				if cls[i].Workspace.ID != ws {
-					continue
-				}
-				seen = &cls[i]
-				if cls[i].Fullscreen != 0 || (cls[i].Size[0] == width && cls[i].Size[1] == height) {
-					return &cls[i], false, nil
-				}
-				if mismatchSince.IsZero() {
-					mismatchSince = time.Now()
-				}
-			}
+func atoi(s string) int {
+	n := 0
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0
 		}
-		stuck := !mismatchSince.IsZero() && time.Since(mismatchSince) > 700*time.Millisecond
-		if time.Now().After(deadline) || stuck {
-			if seen != nil {
-				return nil, true, errf(CodeCage, "a bar or reserved area may shrink the workspace", "cage window on workspace %d is %dx%d, wanted %dx%d", ws, seen.Size[0], seen.Size[1], width, height)
-			}
-			return nil, false, errf(CodeCage, "the exec rules may not have applied (spike S6)", "cage window did not appear on workspace %d", ws)
-		}
-		time.Sleep(100 * time.Millisecond)
+		n = n*10 + int(ch-'0')
 	}
+	return n
 }

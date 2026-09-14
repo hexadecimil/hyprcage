@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/hexadecimil/hyprcage/main/install.sh | bash
 #
 # What it does, in order, skipping what is already there:
-#   1. cage (the agent's compositor) and wl-mirror (the human's mirror window),
+#   1. cage, the agent's compositor,
 #      through pacman. sudo asks for your password once.
 #   2. the hyprcage binary for this machine, from the GitHub release, checksum
 #      verified against the SHA256SUMS published with it, into ~/.local/bin.
@@ -30,7 +30,7 @@ REPO=${HYPRCAGE_REPO:-hexadecimil/hyprcage}
 BIN_DIR=${HYPRCAGE_BIN_DIR:-$HOME/.local/bin}
 AGENTS=${HYPRCAGE_AGENTS:-all}
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")
-PACKAGES=(cage wl-mirror)
+PACKAGES=(cage)
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -53,7 +53,7 @@ missing_packages() {
 
 install_packages() {
   local missing; mapfile -t missing < <(missing_packages)
-  if [ ${#missing[@]} -eq 0 ]; then say "cage and wl-mirror already installed"; return; fi
+  if [ ${#missing[@]} -eq 0 ]; then say "cage already installed"; return; fi
   have pacman || die "cage is missing and this is not an Arch-based system: install ${missing[*]} with your package manager, then rerun"
   say "installing ${missing[*]} (sudo will ask for your password)"
   if sudo -n true 2>/dev/null || [ -t 0 ]; then
@@ -79,7 +79,7 @@ build_from_source() {
     src=$(mktemp -d); say "cloning $REPO"; git clone -q --depth 1 "https://github.com/$REPO" "$src" || return 1
   fi
   say "building from source in $src"
-  (cd "$src" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/hexadecimil/hyprcage/internal/version.Version=$(git -C "$src" describe --tags --always 2>/dev/null || echo source)" -o "$BIN_DIR/hyprcage" ./cmd/hyprcage)
+  (cd "$src" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/hexadecimil/hyprcage/internal/version.Version=$(git -C "$src" describe --tags --always --dirty 2>/dev/null || echo source)" -o "$BIN_DIR/hyprcage" ./cmd/hyprcage)
 }
 
 install_binary() {
@@ -102,6 +102,13 @@ install_binary() {
   (cd "$tmp" && sha256sum -c --ignore-missing --quiet SHA256SUMS) || die "checksum mismatch for hyprcage-linux-$a: not installing"
   install -m 0755 "$tmp/hyprcage-linux-$a" "$BIN_DIR/hyprcage"
   say "installed $BIN_DIR/hyprcage ($("$BIN_DIR/hyprcage" version))"
+}
+
+# The configuration file, every key at its default, so that a setting is a
+# line to edit rather than a key to discover. An existing file is kept.
+write_config() {
+  local out; out=$("$BIN_DIR/hyprcage" config 2>/dev/null) || return 0
+  case $out in wrote*) say "$out" ;; esac
 }
 
 check_path() {
@@ -227,12 +234,12 @@ register_plugin() {
 # --- uninstall ---------------------------------------------------------------------
 
 uninstall() {
-  say "removing hyprcage from the agents, the binary and hyprcage's state (cage and wl-mirror are left)"
+  say "removing hyprcage from the agents, the binary and hyprcage's state (cage is left)"
   unregister_agents
   if [ -x "$BIN_DIR/hyprcage" ]; then "$BIN_DIR/hyprcage" gc --all >/dev/null 2>&1 || true; fi
   rm -f "$BIN_DIR/hyprcage"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/hyprcage" "${XDG_CONFIG_HOME:-$HOME/.config}/hyprcage"
-  say "done; to remove cage too:  sudo pacman -Rns cage wl-mirror"
+  say "done. To remove cage too:  sudo pacman -Rns cage"
 }
 
 # --- main ------------------------------------------------------------------------------
@@ -249,13 +256,14 @@ while [ $# -gt 0 ]; do
   shift
 done
 case $mode in
-  binary) install_binary ;;
+  binary) install_binary; write_config ;;
   uninstall) uninstall ;;
   install)
     [ "$(uname -s)" = Linux ] || die "hyprcage runs on Linux with Hyprland"
     have Hyprland || warn "Hyprland not found in PATH; hyprcage needs a running Hyprland to do anything"
     install_packages
     install_binary
+    write_config
     check_path
     register_agents
     say "checking the installation"

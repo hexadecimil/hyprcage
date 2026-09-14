@@ -92,6 +92,36 @@ func Launch(c *Ctx, rec *registry.Screen, command []string, cwd string, extraEnv
 	return cmd.Process.Pid, AppLogPath(rec.Name, launchSeq), nil
 }
 
+// CageLogPath is where cage's own stdout and stderr go: the place to look
+// when a screen does not come up (a render node that cannot be opened, a
+// renderer that fails to initialise).
+func CageLogPath(screen string) string {
+	return filepath.Join(LogDir(), screen+"-cage.log")
+}
+
+// MirrorLog opens the mirror's log for one line, appended.
+func MirrorLog(screen string) *os.File {
+	if err := os.MkdirAll(LogDir(), 0o700); err != nil {
+		return nil
+	}
+	f, err := os.OpenFile(filepath.Join(LogDir(), screen+"-mirror.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil
+	}
+	return f
+}
+
+func cageLog(screen string) *os.File {
+	if err := os.MkdirAll(LogDir(), 0o700); err != nil {
+		return nil
+	}
+	f, err := os.OpenFile(CageLogPath(screen), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil
+	}
+	return f
+}
+
 // LogDir is where launched applications' stdout and stderr go (cahier N8).
 func LogDir() string {
 	base := os.Getenv("XDG_STATE_HOME")

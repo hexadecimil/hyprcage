@@ -43,7 +43,7 @@ func TestToolsRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"screen_create", "screen_destroy", "screen_list", "app_launch", "app_close", "windows",
+	want := []string{"screen_create", "screen_destroy", "screen_list", "mirror", "app_launch", "app_close", "windows",
 		"screenshot", "click", "double_click", "move", "scroll", "drag", "type", "key", "wait", "batch", "setup"}
 	got := map[string]*mcp.Tool{}
 	for _, tl := range res.Tools {
@@ -82,6 +82,9 @@ func TestScreenListEmpty(t *testing.T) {
 	}
 }
 
+// A screen needs no Hyprland any more: without one, an action on a screen
+// that does not exist is an ordinary not-found tool error, not a protocol
+// error.
 func TestActionWithoutHyprlandIsToolError(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	t.Setenv("HYPRLAND_INSTANCE_SIGNATURE", "")
@@ -90,7 +93,7 @@ func TestActionWithoutHyprlandIsToolError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("protocol error instead of tool error: %v", err)
 	}
-	if !res.IsError || !strings.Contains(text(res), "hyprland_unreachable") {
+	if !res.IsError || !strings.Contains(text(res), "screen_not_found") {
 		t.Errorf("isError=%v text=%q", res.IsError, text(res))
 	}
 }

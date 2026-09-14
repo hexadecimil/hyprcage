@@ -1,6 +1,5 @@
 // Package setup installs what hyprcage needs on the machine, with the
-// human's authorisation: cage (the agent's compositor, required) and
-// wl-mirror (the human's mirror window, optional), through the
+// human's authorisation: cage, the agent's compositor, through the
 // distribution's package manager. Root is obtained the way a desktop
 // application store does it: sudo when it needs no password or a terminal
 // is there, otherwise a polkit dialog (pkexec) on the human's screen.
@@ -19,7 +18,6 @@ import (
 // package is present.
 var Packages = []struct{ Package, Binary string }{
 	{"cage", "cage"},
-	{"wl-mirror", "wl-mirror"},
 }
 
 // Report says what Run found and did.

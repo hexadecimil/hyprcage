@@ -5,19 +5,23 @@ import (
 	"github.com/hexadecimil/hyprcage/internal/hypr"
 )
 
-// Ctx bundles what every operation needs: the configuration, the Hyprland
-// instance and its configuration driver.
+// Ctx bundles what every operation needs: the configuration and, when one
+// runs, the Hyprland instance with its configuration driver. A screen
+// itself needs no Hyprland: cage brings its own output. Hyprland is used to
+// place the mirror window, by doctor, and to tear down screens made by a
+// hyprcage before 0.3, whose outputs were Hyprland's.
 type Ctx struct {
 	Cfg    config.Config
 	Hypr   *hypr.Instance
 	Driver hypr.ConfigDriver
 }
 
-// Connect discovers Hyprland and picks the configuration driver.
+// Connect discovers Hyprland when there is one and picks its configuration
+// driver. Without Hyprland the context still works, mirror placement aside.
 func Connect(cfg config.Config) (*Ctx, error) {
-	inst, err := hypr.Discover()
-	if err != nil {
-		return nil, errf(CodeHyprland, "is Hyprland running? HYPRLAND_INSTANCE_SIGNATURE or XDG_RUNTIME_DIR may be unset", "%v", err)
+	c := &Ctx{Cfg: cfg}
+	if inst, err := hypr.Discover(); err == nil {
+		c.Hypr, c.Driver = inst, inst.Driver()
 	}
-	return &Ctx{Cfg: cfg, Hypr: inst, Driver: inst.Driver()}, nil
+	return c, nil
 }

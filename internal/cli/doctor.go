@@ -43,9 +43,9 @@ func runDoctor(e *Env) int {
 		add("config", "fail", err.Error())
 		cfg = config.Default()
 	case cfg.Loaded:
-		add("config", "ok", fmt.Sprintf("%s (screens %dx%d on workspaces %d-%d, mirrors on %d-%d, %d per session)", cfg.Path, cfg.DefaultWidth, cfg.DefaultHeight, cfg.WorkspaceMin, cfg.WorkspaceMax, cfg.MirrorMin, cfg.MirrorMax, cfg.MaxPerSession))
+		add("config", "ok", fmt.Sprintf("%s (screens %dx%d, mirrors on workspaces %d-%d by %s, %d screens per session)", cfg.Path, cfg.DefaultWidth, cfg.DefaultHeight, cfg.MirrorMin, cfg.MirrorMax, cfg.MirrorGroup, cfg.MaxPerSession))
 	default:
-		add("config", "ok", fmt.Sprintf("defaults (no %s)", cfg.Path))
+		add("config", "ok", fmt.Sprintf("defaults (no %s, `hyprcage config` writes one)", cfg.Path))
 	}
 
 	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt == "" {
@@ -110,7 +110,7 @@ func runDoctor(e *Env) int {
 		}
 	}
 	tool("cage", "fail", "the agent's compositor; `hyprcage setup` installs it")
-	tool("wl-mirror", "warn", "optional, the human's mirror window; `hyprcage setup` installs it")
+
 	if len(setup.Missing()) > 0 {
 		if _, err := exec.LookPath("pkexec"); err == nil {
 			add("setup", "ok", "pkexec available: `hyprcage setup` will ask for your password in a dialog")

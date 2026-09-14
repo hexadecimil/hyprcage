@@ -6,6 +6,10 @@
 //   virtual-keyboard-unstable-v1.xml
 //   wlr-screencopy-unstable-v1.xml
 //   wlr-foreign-toplevel-management-unstable-v1.xml
+//   wlr-output-management-unstable-v1.xml
+//   xdg-shell.xml
+//   linux-dmabuf-v1.xml
+//   viewporter.xml
 
 package wl
 
@@ -83,6 +87,47 @@ const (
 	reqWlSurfaceOffset                                           = 10
 	reqWlSurfaceGetRelease                                       = 11
 	reqWlTouchRelease                                            = 0
+	reqWpViewportDestroy                                         = 0
+	reqWpViewportSetSource                                       = 1
+	reqWpViewportSetDestination                                  = 2
+	reqWpViewporterDestroy                                       = 0
+	reqWpViewporterGetViewport                                   = 1
+	reqXdgPopupDestroy                                           = 0
+	reqXdgPopupGrab                                              = 1
+	reqXdgPopupReposition                                        = 2
+	reqXdgPositionerDestroy                                      = 0
+	reqXdgPositionerSetSize                                      = 1
+	reqXdgPositionerSetAnchorRect                                = 2
+	reqXdgPositionerSetAnchor                                    = 3
+	reqXdgPositionerSetGravity                                   = 4
+	reqXdgPositionerSetConstraintAdjustment                      = 5
+	reqXdgPositionerSetOffset                                    = 6
+	reqXdgPositionerSetReactive                                  = 7
+	reqXdgPositionerSetParentSize                                = 8
+	reqXdgPositionerSetParentConfigure                           = 9
+	reqXdgSurfaceDestroy                                         = 0
+	reqXdgSurfaceGetToplevel                                     = 1
+	reqXdgSurfaceGetPopup                                        = 2
+	reqXdgSurfaceSetWindowGeometry                               = 3
+	reqXdgSurfaceAckConfigure                                    = 4
+	reqXdgToplevelDestroy                                        = 0
+	reqXdgToplevelSetParent                                      = 1
+	reqXdgToplevelSetTitle                                       = 2
+	reqXdgToplevelSetAppId                                       = 3
+	reqXdgToplevelShowWindowMenu                                 = 4
+	reqXdgToplevelMove                                           = 5
+	reqXdgToplevelResize                                         = 6
+	reqXdgToplevelSetMaxSize                                     = 7
+	reqXdgToplevelSetMinSize                                     = 8
+	reqXdgToplevelSetMaximized                                   = 9
+	reqXdgToplevelUnsetMaximized                                 = 10
+	reqXdgToplevelSetFullscreen                                  = 11
+	reqXdgToplevelUnsetFullscreen                                = 12
+	reqXdgToplevelSetMinimized                                   = 13
+	reqXdgWmBaseDestroy                                          = 0
+	reqXdgWmBaseCreatePositioner                                 = 1
+	reqXdgWmBaseGetXdgSurface                                    = 2
+	reqXdgWmBasePong                                             = 3
 	reqZwlrForeignToplevelHandleV1SetMaximized                   = 0
 	reqZwlrForeignToplevelHandleV1UnsetMaximized                 = 1
 	reqZwlrForeignToplevelHandleV1SetMinimized                   = 2
@@ -94,6 +139,21 @@ const (
 	reqZwlrForeignToplevelHandleV1SetFullscreen                  = 8
 	reqZwlrForeignToplevelHandleV1UnsetFullscreen                = 9
 	reqZwlrForeignToplevelManagerV1Stop                          = 0
+	reqZwlrOutputConfigurationHeadV1SetMode                      = 0
+	reqZwlrOutputConfigurationHeadV1SetCustomMode                = 1
+	reqZwlrOutputConfigurationHeadV1SetPosition                  = 2
+	reqZwlrOutputConfigurationHeadV1SetTransform                 = 3
+	reqZwlrOutputConfigurationHeadV1SetScale                     = 4
+	reqZwlrOutputConfigurationHeadV1SetAdaptiveSync              = 5
+	reqZwlrOutputConfigurationV1EnableHead                       = 0
+	reqZwlrOutputConfigurationV1DisableHead                      = 1
+	reqZwlrOutputConfigurationV1Apply                            = 2
+	reqZwlrOutputConfigurationV1Test                             = 3
+	reqZwlrOutputConfigurationV1Destroy                          = 4
+	reqZwlrOutputHeadV1Release                                   = 0
+	reqZwlrOutputManagerV1CreateConfiguration                    = 0
+	reqZwlrOutputManagerV1Stop                                   = 1
+	reqZwlrOutputModeV1Release                                   = 0
 	reqZwlrScreencopyFrameV1Copy                                 = 0
 	reqZwlrScreencopyFrameV1Destroy                              = 1
 	reqZwlrScreencopyFrameV1CopyWithDamage                       = 2
@@ -112,6 +172,16 @@ const (
 	reqZwlrVirtualPointerV1AxisStop                              = 6
 	reqZwlrVirtualPointerV1AxisDiscrete                          = 7
 	reqZwlrVirtualPointerV1Destroy                               = 8
+	reqZwpLinuxBufferParamsV1Destroy                             = 0
+	reqZwpLinuxBufferParamsV1Add                                 = 1
+	reqZwpLinuxBufferParamsV1Create                              = 2
+	reqZwpLinuxBufferParamsV1CreateImmed                         = 3
+	reqZwpLinuxBufferParamsV1SetSamplingDevice                   = 4
+	reqZwpLinuxDmabufFeedbackV1Destroy                           = 0
+	reqZwpLinuxDmabufV1Destroy                                   = 0
+	reqZwpLinuxDmabufV1CreateParams                              = 1
+	reqZwpLinuxDmabufV1GetDefaultFeedback                        = 2
+	reqZwpLinuxDmabufV1GetSurfaceFeedback                        = 3
 	reqZwpVirtualKeyboardManagerV1CreateVirtualKeyboard          = 0
 	reqZwpVirtualKeyboardV1Keymap                                = 0
 	reqZwpVirtualKeyboardV1Key                                   = 1
@@ -121,120 +191,179 @@ const (
 
 // Event opcodes (index of the event in its interface's XML order).
 const (
-	evtWlBufferRelease                        = 0
-	evtWlCallbackDone                         = 0
-	evtWlDataDeviceDataOffer                  = 0
-	evtWlDataDeviceEnter                      = 1
-	evtWlDataDeviceLeave                      = 2
-	evtWlDataDeviceMotion                     = 3
-	evtWlDataDeviceDrop                       = 4
-	evtWlDataDeviceSelection                  = 5
-	evtWlDataOfferOffer                       = 0
-	evtWlDataOfferSourceActions               = 1
-	evtWlDataOfferAction                      = 2
-	evtWlDataSourceTarget                     = 0
-	evtWlDataSourceSend                       = 1
-	evtWlDataSourceCancelled                  = 2
-	evtWlDataSourceDndDropPerformed           = 3
-	evtWlDataSourceDndFinished                = 4
-	evtWlDataSourceAction                     = 5
-	evtWlDisplayError                         = 0
-	evtWlDisplayDeleteId                      = 1
-	evtWlKeyboardKeymap                       = 0
-	evtWlKeyboardEnter                        = 1
-	evtWlKeyboardLeave                        = 2
-	evtWlKeyboardKey                          = 3
-	evtWlKeyboardModifiers                    = 4
-	evtWlKeyboardRepeatInfo                   = 5
-	evtWlOutputGeometry                       = 0
-	evtWlOutputMode                           = 1
-	evtWlOutputDone                           = 2
-	evtWlOutputScale                          = 3
-	evtWlOutputName                           = 4
-	evtWlOutputDescription                    = 5
-	evtWlPointerEnter                         = 0
-	evtWlPointerLeave                         = 1
-	evtWlPointerMotion                        = 2
-	evtWlPointerButton                        = 3
-	evtWlPointerAxis                          = 4
-	evtWlPointerFrame                         = 5
-	evtWlPointerAxisSource                    = 6
-	evtWlPointerAxisStop                      = 7
-	evtWlPointerAxisDiscrete                  = 8
-	evtWlPointerAxisValue120                  = 9
-	evtWlPointerAxisRelativeDirection         = 10
-	evtWlPointerWarp                          = 11
-	evtWlRegistryGlobal                       = 0
-	evtWlRegistryGlobalRemove                 = 1
-	evtWlSeatCapabilities                     = 0
-	evtWlSeatName                             = 1
-	evtWlShellSurfacePing                     = 0
-	evtWlShellSurfaceConfigure                = 1
-	evtWlShellSurfacePopupDone                = 2
-	evtWlShmFormat                            = 0
-	evtWlSurfaceEnter                         = 0
-	evtWlSurfaceLeave                         = 1
-	evtWlSurfacePreferredBufferScale          = 2
-	evtWlSurfacePreferredBufferTransform      = 3
-	evtWlTouchDown                            = 0
-	evtWlTouchUp                              = 1
-	evtWlTouchMotion                          = 2
-	evtWlTouchFrame                           = 3
-	evtWlTouchCancel                          = 4
-	evtWlTouchShape                           = 5
-	evtWlTouchOrientation                     = 6
-	evtZwlrForeignToplevelHandleV1Title       = 0
-	evtZwlrForeignToplevelHandleV1AppId       = 1
-	evtZwlrForeignToplevelHandleV1OutputEnter = 2
-	evtZwlrForeignToplevelHandleV1OutputLeave = 3
-	evtZwlrForeignToplevelHandleV1State       = 4
-	evtZwlrForeignToplevelHandleV1Done        = 5
-	evtZwlrForeignToplevelHandleV1Closed      = 6
-	evtZwlrForeignToplevelHandleV1Parent      = 7
-	evtZwlrForeignToplevelManagerV1Toplevel   = 0
-	evtZwlrForeignToplevelManagerV1Finished   = 1
-	evtZwlrScreencopyFrameV1Buffer            = 0
-	evtZwlrScreencopyFrameV1Flags             = 1
-	evtZwlrScreencopyFrameV1Ready             = 2
-	evtZwlrScreencopyFrameV1Failed            = 3
-	evtZwlrScreencopyFrameV1Damage            = 4
-	evtZwlrScreencopyFrameV1LinuxDmabuf       = 5
-	evtZwlrScreencopyFrameV1BufferDone        = 6
+	evtWlBufferRelease                             = 0
+	evtWlCallbackDone                              = 0
+	evtWlDataDeviceDataOffer                       = 0
+	evtWlDataDeviceEnter                           = 1
+	evtWlDataDeviceLeave                           = 2
+	evtWlDataDeviceMotion                          = 3
+	evtWlDataDeviceDrop                            = 4
+	evtWlDataDeviceSelection                       = 5
+	evtWlDataOfferOffer                            = 0
+	evtWlDataOfferSourceActions                    = 1
+	evtWlDataOfferAction                           = 2
+	evtWlDataSourceTarget                          = 0
+	evtWlDataSourceSend                            = 1
+	evtWlDataSourceCancelled                       = 2
+	evtWlDataSourceDndDropPerformed                = 3
+	evtWlDataSourceDndFinished                     = 4
+	evtWlDataSourceAction                          = 5
+	evtWlDisplayError                              = 0
+	evtWlDisplayDeleteId                           = 1
+	evtWlKeyboardKeymap                            = 0
+	evtWlKeyboardEnter                             = 1
+	evtWlKeyboardLeave                             = 2
+	evtWlKeyboardKey                               = 3
+	evtWlKeyboardModifiers                         = 4
+	evtWlKeyboardRepeatInfo                        = 5
+	evtWlOutputGeometry                            = 0
+	evtWlOutputMode                                = 1
+	evtWlOutputDone                                = 2
+	evtWlOutputScale                               = 3
+	evtWlOutputName                                = 4
+	evtWlOutputDescription                         = 5
+	evtWlPointerEnter                              = 0
+	evtWlPointerLeave                              = 1
+	evtWlPointerMotion                             = 2
+	evtWlPointerButton                             = 3
+	evtWlPointerAxis                               = 4
+	evtWlPointerFrame                              = 5
+	evtWlPointerAxisSource                         = 6
+	evtWlPointerAxisStop                           = 7
+	evtWlPointerAxisDiscrete                       = 8
+	evtWlPointerAxisValue120                       = 9
+	evtWlPointerAxisRelativeDirection              = 10
+	evtWlPointerWarp                               = 11
+	evtWlRegistryGlobal                            = 0
+	evtWlRegistryGlobalRemove                      = 1
+	evtWlSeatCapabilities                          = 0
+	evtWlSeatName                                  = 1
+	evtWlShellSurfacePing                          = 0
+	evtWlShellSurfaceConfigure                     = 1
+	evtWlShellSurfacePopupDone                     = 2
+	evtWlShmFormat                                 = 0
+	evtWlSurfaceEnter                              = 0
+	evtWlSurfaceLeave                              = 1
+	evtWlSurfacePreferredBufferScale               = 2
+	evtWlSurfacePreferredBufferTransform           = 3
+	evtWlTouchDown                                 = 0
+	evtWlTouchUp                                   = 1
+	evtWlTouchMotion                               = 2
+	evtWlTouchFrame                                = 3
+	evtWlTouchCancel                               = 4
+	evtWlTouchShape                                = 5
+	evtWlTouchOrientation                          = 6
+	evtXdgPopupConfigure                           = 0
+	evtXdgPopupPopupDone                           = 1
+	evtXdgPopupRepositioned                        = 2
+	evtXdgSurfaceConfigure                         = 0
+	evtXdgToplevelConfigure                        = 0
+	evtXdgToplevelClose                            = 1
+	evtXdgToplevelConfigureBounds                  = 2
+	evtXdgToplevelWmCapabilities                   = 3
+	evtXdgWmBasePing                               = 0
+	evtZwlrForeignToplevelHandleV1Title            = 0
+	evtZwlrForeignToplevelHandleV1AppId            = 1
+	evtZwlrForeignToplevelHandleV1OutputEnter      = 2
+	evtZwlrForeignToplevelHandleV1OutputLeave      = 3
+	evtZwlrForeignToplevelHandleV1State            = 4
+	evtZwlrForeignToplevelHandleV1Done             = 5
+	evtZwlrForeignToplevelHandleV1Closed           = 6
+	evtZwlrForeignToplevelHandleV1Parent           = 7
+	evtZwlrForeignToplevelManagerV1Toplevel        = 0
+	evtZwlrForeignToplevelManagerV1Finished        = 1
+	evtZwlrOutputConfigurationV1Succeeded          = 0
+	evtZwlrOutputConfigurationV1Failed             = 1
+	evtZwlrOutputConfigurationV1Cancelled          = 2
+	evtZwlrOutputHeadV1Name                        = 0
+	evtZwlrOutputHeadV1Description                 = 1
+	evtZwlrOutputHeadV1PhysicalSize                = 2
+	evtZwlrOutputHeadV1Mode                        = 3
+	evtZwlrOutputHeadV1Enabled                     = 4
+	evtZwlrOutputHeadV1CurrentMode                 = 5
+	evtZwlrOutputHeadV1Position                    = 6
+	evtZwlrOutputHeadV1Transform                   = 7
+	evtZwlrOutputHeadV1Scale                       = 8
+	evtZwlrOutputHeadV1Finished                    = 9
+	evtZwlrOutputHeadV1Make                        = 10
+	evtZwlrOutputHeadV1Model                       = 11
+	evtZwlrOutputHeadV1SerialNumber                = 12
+	evtZwlrOutputHeadV1AdaptiveSync                = 13
+	evtZwlrOutputManagerV1Head                     = 0
+	evtZwlrOutputManagerV1Done                     = 1
+	evtZwlrOutputManagerV1Finished                 = 2
+	evtZwlrOutputModeV1Size                        = 0
+	evtZwlrOutputModeV1Refresh                     = 1
+	evtZwlrOutputModeV1Preferred                   = 2
+	evtZwlrOutputModeV1Finished                    = 3
+	evtZwlrScreencopyFrameV1Buffer                 = 0
+	evtZwlrScreencopyFrameV1Flags                  = 1
+	evtZwlrScreencopyFrameV1Ready                  = 2
+	evtZwlrScreencopyFrameV1Failed                 = 3
+	evtZwlrScreencopyFrameV1Damage                 = 4
+	evtZwlrScreencopyFrameV1LinuxDmabuf            = 5
+	evtZwlrScreencopyFrameV1BufferDone             = 6
+	evtZwpLinuxBufferParamsV1Created               = 0
+	evtZwpLinuxBufferParamsV1Failed                = 1
+	evtZwpLinuxDmabufFeedbackV1Done                = 0
+	evtZwpLinuxDmabufFeedbackV1FormatTable         = 1
+	evtZwpLinuxDmabufFeedbackV1MainDevice          = 2
+	evtZwpLinuxDmabufFeedbackV1TrancheDone         = 3
+	evtZwpLinuxDmabufFeedbackV1TrancheTargetDevice = 4
+	evtZwpLinuxDmabufFeedbackV1TrancheFormats      = 5
+	evtZwpLinuxDmabufFeedbackV1TrancheFlags        = 6
+	evtZwpLinuxDmabufV1Format                      = 0
+	evtZwpLinuxDmabufV1Modifier                    = 1
 )
 
 // Interface names.
 const (
-	ifaceWlBuffer                     = "wl_buffer"
-	ifaceWlCallback                   = "wl_callback"
-	ifaceWlCompositor                 = "wl_compositor"
-	ifaceWlDataDevice                 = "wl_data_device"
-	ifaceWlDataDeviceManager          = "wl_data_device_manager"
-	ifaceWlDataOffer                  = "wl_data_offer"
-	ifaceWlDataSource                 = "wl_data_source"
-	ifaceWlDisplay                    = "wl_display"
-	ifaceWlFixes                      = "wl_fixes"
-	ifaceWlKeyboard                   = "wl_keyboard"
-	ifaceWlOutput                     = "wl_output"
-	ifaceWlPointer                    = "wl_pointer"
-	ifaceWlRegion                     = "wl_region"
-	ifaceWlRegistry                   = "wl_registry"
-	ifaceWlSeat                       = "wl_seat"
-	ifaceWlShell                      = "wl_shell"
-	ifaceWlShellSurface               = "wl_shell_surface"
-	ifaceWlShm                        = "wl_shm"
-	ifaceWlShmPool                    = "wl_shm_pool"
-	ifaceWlSubcompositor              = "wl_subcompositor"
-	ifaceWlSubsurface                 = "wl_subsurface"
-	ifaceWlSurface                    = "wl_surface"
-	ifaceWlTouch                      = "wl_touch"
-	ifaceZwlrForeignToplevelHandleV1  = "zwlr_foreign_toplevel_handle_v1"
-	ifaceZwlrForeignToplevelManagerV1 = "zwlr_foreign_toplevel_manager_v1"
-	ifaceZwlrScreencopyFrameV1        = "zwlr_screencopy_frame_v1"
-	ifaceZwlrScreencopyManagerV1      = "zwlr_screencopy_manager_v1"
-	ifaceZwlrVirtualPointerManagerV1  = "zwlr_virtual_pointer_manager_v1"
-	ifaceZwlrVirtualPointerV1         = "zwlr_virtual_pointer_v1"
-	ifaceZwpVirtualKeyboardManagerV1  = "zwp_virtual_keyboard_manager_v1"
-	ifaceZwpVirtualKeyboardV1         = "zwp_virtual_keyboard_v1"
+	ifaceWlBuffer                      = "wl_buffer"
+	ifaceWlCallback                    = "wl_callback"
+	ifaceWlCompositor                  = "wl_compositor"
+	ifaceWlDataDevice                  = "wl_data_device"
+	ifaceWlDataDeviceManager           = "wl_data_device_manager"
+	ifaceWlDataOffer                   = "wl_data_offer"
+	ifaceWlDataSource                  = "wl_data_source"
+	ifaceWlDisplay                     = "wl_display"
+	ifaceWlFixes                       = "wl_fixes"
+	ifaceWlKeyboard                    = "wl_keyboard"
+	ifaceWlOutput                      = "wl_output"
+	ifaceWlPointer                     = "wl_pointer"
+	ifaceWlRegion                      = "wl_region"
+	ifaceWlRegistry                    = "wl_registry"
+	ifaceWlSeat                        = "wl_seat"
+	ifaceWlShell                       = "wl_shell"
+	ifaceWlShellSurface                = "wl_shell_surface"
+	ifaceWlShm                         = "wl_shm"
+	ifaceWlShmPool                     = "wl_shm_pool"
+	ifaceWlSubcompositor               = "wl_subcompositor"
+	ifaceWlSubsurface                  = "wl_subsurface"
+	ifaceWlSurface                     = "wl_surface"
+	ifaceWlTouch                       = "wl_touch"
+	ifaceWpViewport                    = "wp_viewport"
+	ifaceWpViewporter                  = "wp_viewporter"
+	ifaceXdgPopup                      = "xdg_popup"
+	ifaceXdgPositioner                 = "xdg_positioner"
+	ifaceXdgSurface                    = "xdg_surface"
+	ifaceXdgToplevel                   = "xdg_toplevel"
+	ifaceXdgWmBase                     = "xdg_wm_base"
+	ifaceZwlrForeignToplevelHandleV1   = "zwlr_foreign_toplevel_handle_v1"
+	ifaceZwlrForeignToplevelManagerV1  = "zwlr_foreign_toplevel_manager_v1"
+	ifaceZwlrOutputConfigurationHeadV1 = "zwlr_output_configuration_head_v1"
+	ifaceZwlrOutputConfigurationV1     = "zwlr_output_configuration_v1"
+	ifaceZwlrOutputHeadV1              = "zwlr_output_head_v1"
+	ifaceZwlrOutputManagerV1           = "zwlr_output_manager_v1"
+	ifaceZwlrOutputModeV1              = "zwlr_output_mode_v1"
+	ifaceZwlrScreencopyFrameV1         = "zwlr_screencopy_frame_v1"
+	ifaceZwlrScreencopyManagerV1       = "zwlr_screencopy_manager_v1"
+	ifaceZwlrVirtualPointerManagerV1   = "zwlr_virtual_pointer_manager_v1"
+	ifaceZwlrVirtualPointerV1          = "zwlr_virtual_pointer_v1"
+	ifaceZwpLinuxBufferParamsV1        = "zwp_linux_buffer_params_v1"
+	ifaceZwpLinuxDmabufFeedbackV1      = "zwp_linux_dmabuf_feedback_v1"
+	ifaceZwpLinuxDmabufV1              = "zwp_linux_dmabuf_v1"
+	ifaceZwpVirtualKeyboardManagerV1   = "zwp_virtual_keyboard_manager_v1"
+	ifaceZwpVirtualKeyboardV1          = "zwp_virtual_keyboard_v1"
 )
 
 // protoIfaces describes every interface of the bundled protocols: its
@@ -541,6 +670,106 @@ var protoIfaces = map[string]*ifaceSpec{
 			{Name: "orientation", Opcode: 6, Since: 6, Args: []argSpec{{Name: "id", Type: argInt}, {Name: "orientation", Type: argFixed}}},
 		},
 	},
+	"wp_viewport": {
+		Name:    "wp_viewport",
+		Version: 1,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "set_source", Opcode: 1, Since: 1, Args: []argSpec{{Name: "x", Type: argFixed}, {Name: "y", Type: argFixed}, {Name: "width", Type: argFixed}, {Name: "height", Type: argFixed}}},
+			{Name: "set_destination", Opcode: 2, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+		},
+	},
+	"wp_viewporter": {
+		Name:    "wp_viewporter",
+		Version: 1,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "get_viewport", Opcode: 1, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "wp_viewport"}, {Name: "surface", Type: argObject, Interface: "wl_surface"}}},
+		},
+	},
+	"xdg_popup": {
+		Name:    "xdg_popup",
+		Version: 7,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "grab", Opcode: 1, Since: 1, Args: []argSpec{{Name: "seat", Type: argObject, Interface: "wl_seat"}, {Name: "serial", Type: argUint}}},
+			{Name: "reposition", Opcode: 2, Since: 3, Args: []argSpec{{Name: "positioner", Type: argObject, Interface: "xdg_positioner"}, {Name: "token", Type: argUint}}},
+		},
+		Events: []msgSpec{
+			{Name: "configure", Opcode: 0, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}, {Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "popup_done", Opcode: 1, Since: 1},
+			{Name: "repositioned", Opcode: 2, Since: 3, Args: []argSpec{{Name: "token", Type: argUint}}},
+		},
+	},
+	"xdg_positioner": {
+		Name:    "xdg_positioner",
+		Version: 7,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "set_size", Opcode: 1, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "set_anchor_rect", Opcode: 2, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}, {Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "set_anchor", Opcode: 3, Since: 1, Args: []argSpec{{Name: "anchor", Type: argUint}}},
+			{Name: "set_gravity", Opcode: 4, Since: 1, Args: []argSpec{{Name: "gravity", Type: argUint}}},
+			{Name: "set_constraint_adjustment", Opcode: 5, Since: 1, Args: []argSpec{{Name: "constraint_adjustment", Type: argUint}}},
+			{Name: "set_offset", Opcode: 6, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}}},
+			{Name: "set_reactive", Opcode: 7, Since: 3},
+			{Name: "set_parent_size", Opcode: 8, Since: 3, Args: []argSpec{{Name: "parent_width", Type: argInt}, {Name: "parent_height", Type: argInt}}},
+			{Name: "set_parent_configure", Opcode: 9, Since: 3, Args: []argSpec{{Name: "serial", Type: argUint}}},
+		},
+	},
+	"xdg_surface": {
+		Name:    "xdg_surface",
+		Version: 7,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "get_toplevel", Opcode: 1, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "xdg_toplevel"}}},
+			{Name: "get_popup", Opcode: 2, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "xdg_popup"}, {Name: "parent", Type: argObject, Interface: "xdg_surface", Nullable: true}, {Name: "positioner", Type: argObject, Interface: "xdg_positioner"}}},
+			{Name: "set_window_geometry", Opcode: 3, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}, {Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "ack_configure", Opcode: 4, Since: 1, Args: []argSpec{{Name: "serial", Type: argUint}}},
+		},
+		Events: []msgSpec{
+			{Name: "configure", Opcode: 0, Since: 1, Args: []argSpec{{Name: "serial", Type: argUint}}},
+		},
+	},
+	"xdg_toplevel": {
+		Name:    "xdg_toplevel",
+		Version: 7,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "set_parent", Opcode: 1, Since: 1, Args: []argSpec{{Name: "parent", Type: argObject, Interface: "xdg_toplevel", Nullable: true}}},
+			{Name: "set_title", Opcode: 2, Since: 1, Args: []argSpec{{Name: "title", Type: argString}}},
+			{Name: "set_app_id", Opcode: 3, Since: 1, Args: []argSpec{{Name: "app_id", Type: argString}}},
+			{Name: "show_window_menu", Opcode: 4, Since: 1, Args: []argSpec{{Name: "seat", Type: argObject, Interface: "wl_seat"}, {Name: "serial", Type: argUint}, {Name: "x", Type: argInt}, {Name: "y", Type: argInt}}},
+			{Name: "move", Opcode: 5, Since: 1, Args: []argSpec{{Name: "seat", Type: argObject, Interface: "wl_seat"}, {Name: "serial", Type: argUint}}},
+			{Name: "resize", Opcode: 6, Since: 1, Args: []argSpec{{Name: "seat", Type: argObject, Interface: "wl_seat"}, {Name: "serial", Type: argUint}, {Name: "edges", Type: argUint}}},
+			{Name: "set_max_size", Opcode: 7, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "set_min_size", Opcode: 8, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "set_maximized", Opcode: 9, Since: 1},
+			{Name: "unset_maximized", Opcode: 10, Since: 1},
+			{Name: "set_fullscreen", Opcode: 11, Since: 1, Args: []argSpec{{Name: "output", Type: argObject, Interface: "wl_output", Nullable: true}}},
+			{Name: "unset_fullscreen", Opcode: 12, Since: 1},
+			{Name: "set_minimized", Opcode: 13, Since: 1},
+		},
+		Events: []msgSpec{
+			{Name: "configure", Opcode: 0, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}, {Name: "states", Type: argArray}}},
+			{Name: "close", Opcode: 1, Since: 1},
+			{Name: "configure_bounds", Opcode: 2, Since: 4, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "wm_capabilities", Opcode: 3, Since: 5, Args: []argSpec{{Name: "capabilities", Type: argArray}}},
+		},
+	},
+	"xdg_wm_base": {
+		Name:    "xdg_wm_base",
+		Version: 7,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "create_positioner", Opcode: 1, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "xdg_positioner"}}},
+			{Name: "get_xdg_surface", Opcode: 2, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "xdg_surface"}, {Name: "surface", Type: argObject, Interface: "wl_surface"}}},
+			{Name: "pong", Opcode: 3, Since: 1, Args: []argSpec{{Name: "serial", Type: argUint}}},
+		},
+		Events: []msgSpec{
+			{Name: "ping", Opcode: 0, Since: 1, Args: []argSpec{{Name: "serial", Type: argUint}}},
+		},
+	},
 	"zwlr_foreign_toplevel_handle_v1": {
 		Name:    "zwlr_foreign_toplevel_handle_v1",
 		Version: 3,
@@ -576,6 +805,83 @@ var protoIfaces = map[string]*ifaceSpec{
 		Events: []msgSpec{
 			{Name: "toplevel", Opcode: 0, Since: 1, Args: []argSpec{{Name: "toplevel", Type: argNewID, Interface: "zwlr_foreign_toplevel_handle_v1"}}},
 			{Name: "finished", Opcode: 1, Since: 1},
+		},
+	},
+	"zwlr_output_configuration_head_v1": {
+		Name:    "zwlr_output_configuration_head_v1",
+		Version: 4,
+		Requests: []msgSpec{
+			{Name: "set_mode", Opcode: 0, Since: 1, Args: []argSpec{{Name: "mode", Type: argObject, Interface: "zwlr_output_mode_v1"}}},
+			{Name: "set_custom_mode", Opcode: 1, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}, {Name: "refresh", Type: argInt}}},
+			{Name: "set_position", Opcode: 2, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}}},
+			{Name: "set_transform", Opcode: 3, Since: 1, Args: []argSpec{{Name: "transform", Type: argInt}}},
+			{Name: "set_scale", Opcode: 4, Since: 1, Args: []argSpec{{Name: "scale", Type: argFixed}}},
+			{Name: "set_adaptive_sync", Opcode: 5, Since: 4, Args: []argSpec{{Name: "state", Type: argUint}}},
+		},
+	},
+	"zwlr_output_configuration_v1": {
+		Name:    "zwlr_output_configuration_v1",
+		Version: 4,
+		Requests: []msgSpec{
+			{Name: "enable_head", Opcode: 0, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "zwlr_output_configuration_head_v1"}, {Name: "head", Type: argObject, Interface: "zwlr_output_head_v1"}}},
+			{Name: "disable_head", Opcode: 1, Since: 1, Args: []argSpec{{Name: "head", Type: argObject, Interface: "zwlr_output_head_v1"}}},
+			{Name: "apply", Opcode: 2, Since: 1},
+			{Name: "test", Opcode: 3, Since: 1},
+			{Name: "destroy", Opcode: 4, Since: 1, Destructor: true},
+		},
+		Events: []msgSpec{
+			{Name: "succeeded", Opcode: 0, Since: 1},
+			{Name: "failed", Opcode: 1, Since: 1},
+			{Name: "cancelled", Opcode: 2, Since: 1},
+		},
+	},
+	"zwlr_output_head_v1": {
+		Name:    "zwlr_output_head_v1",
+		Version: 4,
+		Requests: []msgSpec{
+			{Name: "release", Opcode: 0, Since: 3, Destructor: true},
+		},
+		Events: []msgSpec{
+			{Name: "name", Opcode: 0, Since: 1, Args: []argSpec{{Name: "name", Type: argString}}},
+			{Name: "description", Opcode: 1, Since: 1, Args: []argSpec{{Name: "description", Type: argString}}},
+			{Name: "physical_size", Opcode: 2, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "mode", Opcode: 3, Since: 1, Args: []argSpec{{Name: "mode", Type: argNewID, Interface: "zwlr_output_mode_v1"}}},
+			{Name: "enabled", Opcode: 4, Since: 1, Args: []argSpec{{Name: "enabled", Type: argInt}}},
+			{Name: "current_mode", Opcode: 5, Since: 1, Args: []argSpec{{Name: "mode", Type: argObject, Interface: "zwlr_output_mode_v1"}}},
+			{Name: "position", Opcode: 6, Since: 1, Args: []argSpec{{Name: "x", Type: argInt}, {Name: "y", Type: argInt}}},
+			{Name: "transform", Opcode: 7, Since: 1, Args: []argSpec{{Name: "transform", Type: argInt}}},
+			{Name: "scale", Opcode: 8, Since: 1, Args: []argSpec{{Name: "scale", Type: argFixed}}},
+			{Name: "finished", Opcode: 9, Since: 1},
+			{Name: "make", Opcode: 10, Since: 2, Args: []argSpec{{Name: "make", Type: argString}}},
+			{Name: "model", Opcode: 11, Since: 2, Args: []argSpec{{Name: "model", Type: argString}}},
+			{Name: "serial_number", Opcode: 12, Since: 2, Args: []argSpec{{Name: "serial_number", Type: argString}}},
+			{Name: "adaptive_sync", Opcode: 13, Since: 4, Args: []argSpec{{Name: "state", Type: argUint}}},
+		},
+	},
+	"zwlr_output_manager_v1": {
+		Name:    "zwlr_output_manager_v1",
+		Version: 4,
+		Requests: []msgSpec{
+			{Name: "create_configuration", Opcode: 0, Since: 1, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "zwlr_output_configuration_v1"}, {Name: "serial", Type: argUint}}},
+			{Name: "stop", Opcode: 1, Since: 1},
+		},
+		Events: []msgSpec{
+			{Name: "head", Opcode: 0, Since: 1, Args: []argSpec{{Name: "head", Type: argNewID, Interface: "zwlr_output_head_v1"}}},
+			{Name: "done", Opcode: 1, Since: 1, Args: []argSpec{{Name: "serial", Type: argUint}}},
+			{Name: "finished", Opcode: 2, Since: 1, Destructor: true},
+		},
+	},
+	"zwlr_output_mode_v1": {
+		Name:    "zwlr_output_mode_v1",
+		Version: 3,
+		Requests: []msgSpec{
+			{Name: "release", Opcode: 0, Since: 3, Destructor: true},
+		},
+		Events: []msgSpec{
+			{Name: "size", Opcode: 0, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}}},
+			{Name: "refresh", Opcode: 1, Since: 1, Args: []argSpec{{Name: "refresh", Type: argInt}}},
+			{Name: "preferred", Opcode: 2, Since: 1},
+			{Name: "finished", Opcode: 3, Since: 1},
 		},
 	},
 	"zwlr_screencopy_frame_v1": {
@@ -627,6 +933,51 @@ var protoIfaces = map[string]*ifaceSpec{
 			{Name: "axis_stop", Opcode: 6, Since: 1, Args: []argSpec{{Name: "time", Type: argUint}, {Name: "axis", Type: argUint}}},
 			{Name: "axis_discrete", Opcode: 7, Since: 1, Args: []argSpec{{Name: "time", Type: argUint}, {Name: "axis", Type: argUint}, {Name: "value", Type: argFixed}, {Name: "discrete", Type: argInt}}},
 			{Name: "destroy", Opcode: 8, Since: 1, Destructor: true},
+		},
+	},
+	"zwp_linux_buffer_params_v1": {
+		Name:    "zwp_linux_buffer_params_v1",
+		Version: 6,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "add", Opcode: 1, Since: 1, Args: []argSpec{{Name: "fd", Type: argFD}, {Name: "plane_idx", Type: argUint}, {Name: "offset", Type: argUint}, {Name: "stride", Type: argUint}, {Name: "modifier_hi", Type: argUint}, {Name: "modifier_lo", Type: argUint}}},
+			{Name: "create", Opcode: 2, Since: 1, Args: []argSpec{{Name: "width", Type: argInt}, {Name: "height", Type: argInt}, {Name: "format", Type: argUint}, {Name: "flags", Type: argUint}}},
+			{Name: "create_immed", Opcode: 3, Since: 2, Args: []argSpec{{Name: "buffer_id", Type: argNewID, Interface: "wl_buffer"}, {Name: "width", Type: argInt}, {Name: "height", Type: argInt}, {Name: "format", Type: argUint}, {Name: "flags", Type: argUint}}},
+			{Name: "set_sampling_device", Opcode: 4, Since: 6, Args: []argSpec{{Name: "device", Type: argArray}}},
+		},
+		Events: []msgSpec{
+			{Name: "created", Opcode: 0, Since: 1, Args: []argSpec{{Name: "buffer", Type: argNewID, Interface: "wl_buffer"}}},
+			{Name: "failed", Opcode: 1, Since: 1},
+		},
+	},
+	"zwp_linux_dmabuf_feedback_v1": {
+		Name:    "zwp_linux_dmabuf_feedback_v1",
+		Version: 6,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+		},
+		Events: []msgSpec{
+			{Name: "done", Opcode: 0, Since: 1},
+			{Name: "format_table", Opcode: 1, Since: 1, Args: []argSpec{{Name: "fd", Type: argFD}, {Name: "size", Type: argUint}}},
+			{Name: "main_device", Opcode: 2, Since: 1, Args: []argSpec{{Name: "device", Type: argArray}}},
+			{Name: "tranche_done", Opcode: 3, Since: 1},
+			{Name: "tranche_target_device", Opcode: 4, Since: 1, Args: []argSpec{{Name: "device", Type: argArray}}},
+			{Name: "tranche_formats", Opcode: 5, Since: 1, Args: []argSpec{{Name: "indices", Type: argArray}}},
+			{Name: "tranche_flags", Opcode: 6, Since: 1, Args: []argSpec{{Name: "flags", Type: argUint}}},
+		},
+	},
+	"zwp_linux_dmabuf_v1": {
+		Name:    "zwp_linux_dmabuf_v1",
+		Version: 6,
+		Requests: []msgSpec{
+			{Name: "destroy", Opcode: 0, Since: 1, Destructor: true},
+			{Name: "create_params", Opcode: 1, Since: 1, Args: []argSpec{{Name: "params_id", Type: argNewID, Interface: "zwp_linux_buffer_params_v1"}}},
+			{Name: "get_default_feedback", Opcode: 2, Since: 4, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "zwp_linux_dmabuf_feedback_v1"}}},
+			{Name: "get_surface_feedback", Opcode: 3, Since: 4, Args: []argSpec{{Name: "id", Type: argNewID, Interface: "zwp_linux_dmabuf_feedback_v1"}, {Name: "surface", Type: argObject, Interface: "wl_surface"}}},
+		},
+		Events: []msgSpec{
+			{Name: "format", Opcode: 0, Since: 1, Args: []argSpec{{Name: "format", Type: argUint}}},
+			{Name: "modifier", Opcode: 1, Since: 3, Args: []argSpec{{Name: "format", Type: argUint}, {Name: "modifier_hi", Type: argUint}, {Name: "modifier_lo", Type: argUint}}},
 		},
 	},
 	"zwp_virtual_keyboard_manager_v1": {
