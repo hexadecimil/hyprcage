@@ -13,7 +13,11 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod }
       - run: make dist
+      # The annotated tag's message is the release text, followed by the
+      # generated list of changes.
+      - run: git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: notes.md
           generate_release_notes: true
