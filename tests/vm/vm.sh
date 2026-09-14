@@ -132,8 +132,8 @@ vscp() { # guest paths are written guest:/path
 }
 
 provision() {
-  vscp "$HERE"/guest/provision.sh "$HERE"/guest/omarchy-setup.sh "$HERE"/guest/hyprland.conf "$HERE"/guest/hyprland.lua "$HERE"/guest/hypr-start.sh "$HERE"/guest/hypr-stop.sh "$HERE"/guest/spikes.sh "$HERE"/guest/test.html guest:/home/arch/
-  vssh chmod +x /home/arch/provision.sh /home/arch/omarchy-setup.sh /home/arch/hypr-start.sh /home/arch/hypr-stop.sh /home/arch/spikes.sh
+  vscp "$HERE"/guest/provision.sh "$HERE"/guest/omarchy-setup.sh "$HERE"/guest/hyprland.conf "$HERE"/guest/hyprland.lua "$HERE"/guest/hypr-start.sh "$HERE"/guest/hypr-stop.sh "$HERE"/guest/spikes3.sh "$HERE"/guest/multi.sh "$HERE"/guest/test.html "$HERE"/guest/keys.html guest:/home/arch/
+  vssh chmod +x /home/arch/provision.sh /home/arch/omarchy-setup.sh /home/arch/hypr-start.sh /home/arch/hypr-stop.sh /home/arch/spikes3.sh /home/arch/multi.sh
   vssh sudo /home/arch/provision.sh
   # The omarchy profile adds the Omarchy package on top (same repository and
   # keyring as an ISO install; no ISO disk layout, bootloader or login manager).

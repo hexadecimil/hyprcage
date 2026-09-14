@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ready</title>
+<style>
+  body { margin: 0; background: #fff; font: 24px sans-serif; }
+  #i { position: absolute; left: 100px; top: 100px; width: 900px; height: 40px; font-size: 24px; }
+  #log { position: absolute; left: 100px; top: 200px; white-space: pre; }
+</style></head>
+<body>
+<input id="i" autocomplete="off">
+<div id="log"></div>
+<script>
+  // What Chromium makes of each key hyprcage types: key, code and keyCode of
+  // every keydown, and the input's value. Each state is shown on the page
+  // and sent to a local HTTP server on port 8765, whose request log the test
+  // reads (the window title is not reliable in kiosk mode). An emptied
+  // input starts the log over.
+  const i = document.getElementById('i'), log = document.getElementById('log');
+  let ev = [];
+  const report = t => { log.textContent = t; fetch('http://127.0.0.1:8765/' + encodeURIComponent(t), { mode: 'no-cors' }).catch(() => {}); };
+  const set = () => report('kd ' + ev.join(' ') + ' val=' + i.value);
+  i.addEventListener('keydown', e => { ev.push(e.key + '|' + e.code + '|' + e.keyCode); set(); });
+  i.addEventListener('input', () => { if (!i.value) ev = []; set(); });
+  report('ready');
+</script>
+</body></html>

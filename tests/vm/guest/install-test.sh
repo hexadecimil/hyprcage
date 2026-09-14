@@ -14,7 +14,7 @@ export PATH=$HOME/.local/bin:$PATH XDG_RUNTIME_DIR=/run/user/$(id -u)
 export HYPRCAGE_RELEASE_BASE=${HYPRCAGE_RELEASE_BASE:-https://github.com/hexadecimil/hyprcage/releases/download/$HYPRCAGE_VERSION}
 pgrep -x Hyprland >/dev/null || { HYPR_CONFIG=classic ./hypr-start.sh >/dev/null 2>&1; sleep 3; }
 export HYPRLAND_INSTANCE_SIGNATURE=$(ls "$XDG_RUNTIME_DIR/hypr" | head -1)
-sudo pacman -R --noconfirm cage wl-mirror >/dev/null 2>&1; rm -f ~/.local/bin/hyprcage
+sudo pacman -R --noconfirm cage >/dev/null 2>&1; rm -f ~/.local/bin/hyprcage
 command -v cage >/dev/null && fail "precondition: cage still installed"
 # Fake agents: codex and gemini as scripts that log their arguments, config
 # directories for cursor, windsurf and opencode.
@@ -27,10 +27,13 @@ echo '{"mcpServers":{"other":{"command":"x"}}}' > ~/.cursor/mcp.json
 echo "== install.sh end to end (packages by sudo -n, binary from the release base)"
 bash "$R/install.sh" > ~/install.log 2>&1 && pass "install.sh exits 0" || { fail "install.sh failed"; tail -5 ~/install.log; }
 command -v cage >/dev/null && pass "cage installed" || fail "cage not installed"
-command -v wl-mirror >/dev/null && pass "wl-mirror installed" || fail "wl-mirror not installed"
+
 [ -x ~/.local/bin/hyprcage ] && pass "binary in ~/.local/bin ($(hyprcage version))" || fail "binary missing"
 grep -q 'plugin marketplace add' ~/install.log && pass "Claude Code: plugin commands printed (~/.claude present, no claude CLI)" || fail "plugin step: $(grep -i plugin ~/install.log | head -2)"
 grep -q '^hyprcage  *ok' ~/install.log && pass "doctor ran at the end" || fail "doctor did not run: $(tail -3 ~/install.log)"
+[ -s ~/.config/hyprcage/config.toml ] && grep -q '^group = "session"' ~/.config/hyprcage/config.toml && pass "config written with the defaults" || fail "config: $(head -3 ~/.config/hyprcage/config.toml 2>&1)"
+grep -q 'wrote .*config.toml' ~/install.log && pass "install.sh said where the config is" || fail "install.sh silent about the config"
+sed -i 's/^width = 1280/width = 1024/' ~/.config/hyprcage/config.toml
 
 echo "== agents registered"
 bin=$HOME/.local/bin/hyprcage
@@ -54,6 +57,7 @@ rm -f ~/.local/bin/hyprcage
 bash "$R/bin/hyprcage-mcp" < /dev/null > ~/launcher.out 2> ~/launcher.err; rc=$?
 [ -x ~/.local/bin/hyprcage ] && pass "launcher installed the binary on first run" || fail "launcher did not install: $(tail -2 ~/launcher.err)"
 [ $rc = 0 ] && pass "launcher served MCP and exited cleanly on EOF" || fail "launcher rc=$rc: $(tail -2 ~/launcher.err)"
+grep -q '^width = 1024' ~/.config/hyprcage/config.toml && pass "an edited config survives a reinstall" || fail "config overwritten: $(grep '^width' ~/.config/hyprcage/config.toml)"
 echo "== plugin launcher: an outdated release is updated, a dev build is kept"
 cp ~/.local/bin/hyprcage ~/hyprcage.real
 printf '#!/bin/sh\n[ "$1" = version ] && echo v0.0.1\n' > ~/.local/bin/hyprcage; chmod +x ~/.local/bin/hyprcage
