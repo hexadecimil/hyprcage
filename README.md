@@ -13,6 +13,10 @@ a spare workspace, or not at all. It works on any Hyprland desktop, Omarchy
 included, with Claude Code, Codex, Cursor, Gemini CLI, Windsurf, OpenCode or
 any other MCP client.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="hyprcage mirror window demo" width="800">
+</p>
+
 ## Install
 
 **Claude Code**
